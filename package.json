@@ -1,0 +1,24 @@
+{
+  "name": "digital-memory-agent",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n agent,web -c cyan,magenta \"pnpm --filter @memory/agent dev\" \"pnpm --filter @memory/web dev\"",
+    "build": "pnpm -r build",
+    "start": "concurrently -k -n agent,web -c cyan,magenta \"pnpm --filter @memory/agent start\" \"pnpm --filter @memory/web start\"",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @memory/agent test",
+    "test:e2e": "playwright test",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "@shadcn/helpers": "^0.2.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
+  }
+}

@@ -4,7 +4,7 @@ import { relative } from "node:path";
 import type { FileChange, ProjectFileReference, Run } from "@memory/contracts";
 import type { Store } from "./store.js";
 import { safePath } from "./project-files.js";
-import { UserFacingError } from "./runtime.js";
+import { UserFacingError } from "./harness/runtime.js";
 
 const fileLimit = 12000;
 const contextLimit = 48000;

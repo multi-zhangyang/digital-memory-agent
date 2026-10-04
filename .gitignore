@@ -1,7 +1,9 @@
 # Dependencies and build output
 node_modules/
 .next/
+.next-*/
 dist/
+/apps/agent/dist-*/
 coverage/
 playwright-report/
 test-results/
@@ -30,6 +32,10 @@ checkpoints/
 *.ckpt
 *.pt
 *.pth
+*.onnx
+.venv/
+__pycache__/
+.pytest_cache/
 
 # Editor / OS
 .DS_Store

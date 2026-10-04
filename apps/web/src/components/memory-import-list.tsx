@@ -17,8 +17,9 @@ import {
   ToolHeader,
   ToolContent,
   ToolOutput,
+  ToolInput,
 } from "@/components/ai-elements/tool";
-import { api } from "@/lib/api";
+import { api, videoTime } from "@/lib/api";
 
 const labels = {
   queued: "排队中",
@@ -28,7 +29,7 @@ const labels = {
   cancelled: "已取消",
 };
 const stages = {
-  read: "校验原文",
+  read: "校验来源",
   extract: "模型提取",
   validate: "核对证据",
   save: "保存候选",
@@ -107,7 +108,7 @@ export function MemoryImportList({
                     <p className="truncate text-sm font-medium">{job.title}</p>
                     <p className="truncate text-xs text-muted-foreground">
                       {job.modelId.split("/").slice(1).join("/")} · {finished}/
-                      {job.chunks.length} 段 · {count} 条记忆
+                      {job.chunks.length} {job.mode === "photos" ? "张照片" : job.mode === "auto" ? "项" : "段"} · {count} 条记忆
                     </p>
                   </div>
                   <Badge variant="outline" className="shrink-0">
@@ -142,8 +143,8 @@ export function MemoryImportList({
               {job.chunks.map((chunk, index) => (
                 <Tool key={chunk.id} className="mb-2 last:mb-0">
                   <ToolHeader
-                    title={`${chunk.name} · ${index + 1}${chunk.stage ? " · " + stages[chunk.stage] : chunk.status === "skipped" ? " · 已处理，复用记录" : ""}`}
-                    type="tool-extract_memories"
+                    title={`${chunk.name} · ${chunk.video ? videoTime(chunk.video.timestamp) : index + 1}${chunk.stage ? " · " + stages[chunk.stage] : chunk.reason ? " · 已停止取用" : chunk.status === "skipped" ? " · 已处理，复用记录" : ""}`}
+                    type={chunk.media ? "tool-extract_photo_memories" : "tool-extract_memories"}
                     state={
                       chunk.status === "completed" || chunk.status === "skipped"
                         ? "output-available"
@@ -156,10 +157,11 @@ export function MemoryImportList({
                     }
                   />
                   <ToolContent>
+                    {chunk.media && <ToolInput input={{ assetId: chunk.assetId, source: chunk.name, modelId: chunk.modelId || job.modelId, ...(chunk.video ? { video: chunk.video } : {}) }} />}
                     <div className="space-y-3 border-t p-4">
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span>
-                          原文 {chunk.start}–{chunk.end} 字节
+                          {chunk.media === "video" ? "视频原件" : chunk.media === "image" ? "图片原件" : "原文"} {chunk.start}–{chunk.end} 字节
                         </span>
                         <span>调用 {chunk.attempts} 次</span>
                         {chunk.usage && (
@@ -169,6 +171,7 @@ export function MemoryImportList({
                           </span>
                         )}
                       </div>
+                      {chunk.reason && <p>{chunk.reason}</p>}
                       {chunk.error && (
                         <ToolOutput
                           className="p-0"
@@ -194,7 +197,7 @@ export function MemoryImportList({
                         (chunk.status === "completed" ||
                           chunk.status === "skipped") && (
                           <p className="text-sm text-muted-foreground">
-                            本段没有提取出个人记忆
+                            {chunk.media === "video" ? "此画面没有新增观察" : chunk.media === "image" ? "未生成新的照片记忆" : "本段没有提取出个人记忆"}
                           </p>
                         )
                       )}

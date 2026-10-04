@@ -8,7 +8,31 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:memory": "tsx scripts/evaluate-memory.ts",
+    "eval:memory:live": "tsx scripts/evaluate-memory.ts --live",
+    "eval:photos:live": "tsx scripts/evaluate-photos.ts --live",
+    "eval:photos:review": "tsx scripts/evaluate-photos.ts --review",
+    "eval:harness:live": "tsx scripts/evaluate-harness.ts --live",
+    "eval:harness:migration": "tsx scripts/evaluate-harness-migration.ts",
+    "eval:harness:product": "tsx scripts/evaluate-product-harness.ts --live",
+    "eval:agent-first": "tsx scripts/evaluate-agent-first.ts --live",
+    "eval:media-review": "tsx scripts/evaluate-media-review.ts --live",
+    "eval:video-memory": "tsx scripts/evaluate-video-memory.ts --live",
+    "eval:video-index": "tsx scripts/evaluate-video-index.ts",
+    "eval:frame-memory": "tsx scripts/evaluate-frame-memory.ts --live",
+    "eval:dataset:rebuild": "tsx scripts/evaluate-dataset-rebuild.ts --live",
+    "eval:dataset:pairing": "tsx scripts/evaluate-dataset-pairing.ts --live",
+    "eval:dataset:audit": "tsx scripts/evaluate-dataset-audit.ts --live",
+    "eval:dataset:review-queue": "tsx scripts/evaluate-dataset-review-queue.ts --live",
+    "bench:memory": "tsx scripts/benchmark-memory.ts",
+    "eval:memory:hybrid": "tsx scripts/evaluate-hybrid.ts",
+    "eval:quality:text": "tsx scripts/evaluate-quality.ts",
+    "eval:quality:images": "tsx scripts/evaluate-image-quality.ts",
+    "eval:quality:photos": "tsx scripts/evaluate-photo-processor.ts",
+    "eval:dataset": "tsx scripts/evaluate-dataset.ts",
+    "eval:dataset:questions": "tsx scripts/evaluate-dataset-questions.ts",
+    "archive:memory": "tsx scripts/archive-memory.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.0.0",
@@ -16,7 +40,9 @@
     "@fastify/multipart": "^9.3.0",
     "@memory/contracts": "workspace:*",
     "dotenv": "^17.2.3",
-    "fastify": "^5.6.2"
+    "fastify": "^5.6.2",
+    "sharp": "0.35.5",
+    "sqlite-vec": "0.1.9"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

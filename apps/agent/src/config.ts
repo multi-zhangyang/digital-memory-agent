@@ -41,6 +41,7 @@ export interface AppConfig {
   connections: StoredConnection[];
   providers: ProviderConfig[];
   publicModels: ModelConfiguration;
+  localProcessor?: { python: string; modelsDir: string };
 }
 const definitions = [
   {
@@ -106,7 +107,7 @@ function modelsFrom(connections: StoredConnection[]) {
       !connection.modelName && "模型名称",
       !connection.apiKey && "API key",
     ].filter(Boolean) as string[];
-    const { apiKey, supportsImages, ...publicSettings } = connection;
+    const { apiKey, ...publicSettings } = connection;
     const configured = connection.enabled && missing.length === 0;
     statuses.push({
       ...publicSettings,
@@ -125,7 +126,7 @@ function modelsFrom(connections: StoredConnection[]) {
           id: connection.id + "/" + connection.modelName,
           name: connection.modelName,
           provider: connection.id,
-          supportsImages,
+          supportsImages: connection.supportsImages,
           contextWindow: connection.contextWindow,
           maxTokens: connection.maxTokens,
           reasoning: connection.reasoning,
@@ -227,5 +228,10 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .map((x) => x.trim())
       .filter(Boolean),
     ...modelsFrom(connections),
+    localProcessor: env.MEMORY_LOCAL_FEATURES === "off" ? undefined : (() => {
+      const python = resolve(env.MEMORY_WORKER_PYTHON || resolve(dataDir, "memory-worker/venv/bin/python"));
+      const modelsDir = resolve(env.MEMORY_FEATURE_MODELS || resolve(dataDir, "memory-worker/models"));
+      return existsSync(python) && existsSync(resolve(modelsDir, "manifest.json")) ? { python, modelsDir } : undefined;
+    })(),
   };
 }

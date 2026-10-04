@@ -11,6 +11,7 @@ if (!process.env.AGENT_ORIGIN && existsSync(rootEnv)) {
 }
 
 const config: NextConfig = {
+  distDir: process.env.MEMORY_NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
   transpilePackages: ["@memory/contracts"],
 };

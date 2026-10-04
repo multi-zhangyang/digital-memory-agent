@@ -2,7 +2,7 @@ import { Type, validateToolCall, type Static } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@memory/contracts";
 import type { ProviderConfig } from "./config.js";
-import { UserFacingError } from "./runtime.js";
+import { UserFacingError } from "./harness/runtime.js";
 
 export const EXTRACTOR_VERSION = 2;
 export const memoryAttributeSchema = Type.Object(

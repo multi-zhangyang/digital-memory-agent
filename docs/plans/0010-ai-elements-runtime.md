@@ -1,5 +1,7 @@
 # 阶段十：统一 Agent 运行组件与首次发布源码
 
+> 历史阶段记录：保留当时的决策、实测和限制。当前产品以 [产品定义](../product.md)、[架构](../architecture.md) 和 [Harness 重构计划](0018-harness-refactor.md) 为准。
+
 ## 目标
 
 按用户指定的 [AI Elements](https://elements.ai-sdk.dev/) 统一 Agent 运行界面，安装用户级 skill，并将已经完成的工作台与文字记忆核心提交到用户建立的 GitHub 仓库。

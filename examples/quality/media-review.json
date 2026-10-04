@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "scope": "公开 CC0 照片、程序生成的小字标签和虚构文字；不使用用户资料，也不运行个人模型训练。",
+  "photo": {
+    "id": "cozy-den",
+    "file": "cozy-den.jpg",
+    "bytes": 1694741,
+    "source": "https://commons.wikimedia.org/wiki/File:Cozy_Den_(Unsplash).jpg",
+    "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Cozy_Den_%28Unsplash%29.jpg/3840px-Cozy_Den_%28Unsplash%29.jpg",
+    "author": "Pavan Trikutam",
+    "license": "CC0 1.0",
+    "sha256": "4a87b83a19167d2312e75917d9851a2928f8128e2315ee203056f52cca8394b0",
+    "resolution": "3840px 官方缩略图作为本次导入的原件；原始 5184px 下载被限流。",
+    "reference": {
+      "visible": ["前景桌面上有一本打开的书", "书的右侧有带把手的杯子", "后方壁炉或炉膛内有火焰", "杯子附近有一枝黄色花"],
+      "unknown": ["杯中饮品", "拍摄时间", "地点或房屋归属", "书名及模糊的正文", "人物身份"]
+    }
+  },
+  "label": {
+    "file": "archive-label.svg",
+    "reference": { "code": "RZ49", "date": "2026-09-12", "count": "2 folders" },
+    "faultInjection": "在隔离测试库预置一条编号写成 RZ48 的待核对观察，检验真实模型能否读取像素后自主修订；不是声称提取模型自然犯过此错。"
+  },
+  "temporalReview": "真实生成器先生成问答，再在隔离测试库中删除一个非日期答案问题的日期，作为明确记录的旧样本缺陷。真实 Agent 读取冻结来源、修订并交付，评估器不代为修改答案或审核。",
+  "continuous": "三批不同虚构文字；第一批采用已记住的日期降序偏好，随后用户纠正为升序，后两批须采用新偏好，第三批在服务重启后运行。"
+}

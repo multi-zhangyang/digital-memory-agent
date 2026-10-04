@@ -4,14 +4,15 @@ import dynamic from "next/dynamic";
 import type {
   Asset,
   MemoryEntry,
-  MemoryOverview,
   MemorySpace,
   ModelInfo,
+  MemoryPerson,
 } from "@memory/contracts";
 import {
   BookOpen,
   Check,
   GitMerge,
+  ImagePlus,
   Plus,
   Search,
   Upload,
@@ -61,9 +62,19 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { MemoryImportList } from "./memory-import-list";
+import { MemoryCaptureList } from "./memory-activity";
+import { MemoryPersonDialog } from "./memory-person-dialog";
+import { useMemoryCatalog } from "@/hooks/use-memory-catalog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { MemoryFeatures } from "./memory-features";
+const MemoryEntitiesButton = dynamic(() => import("./memory-entities").then((module) => module.MemoryEntitiesButton));
+const MemoryDatasetsButton = dynamic(() => import("./memory-datasets").then((module) => module.MemoryDatasetsButton));
+const MemoryEventsButton = dynamic(() => import("./memory-events").then((module) => module.MemoryEventsButton));
 const MemoryImportDialog = dynamic(() =>
   import("./memory-import-dialog").then((module) => module.MemoryImportDialog),
 );
+const PhotoImportDialog = dynamic(() => import("./photo-import-dialog").then((module) => module.PhotoImportDialog));
 const categories = {
   profile: "关于我",
   event: "经历",
@@ -96,62 +107,38 @@ export function MemoryLibrary({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [space, setSpace] = useState<MemorySpace>("personal");
-  const [overview, setOverview] = useState<MemoryOverview | null>(null);
   const [revision, setRevision] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [person, setPerson] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [visible, setVisible] = useState(50);
-  const memories =
-    overview?.memories || (space === "personal" ? initialMemories : []);
+  const [personDialog, setPersonDialog] = useState<{ person?: MemoryPerson; ids: string[] } | null>(null);
+  const [personId, setPersonId] = useState("");
+  const params = new URLSearchParams({ space, view: filter, query: query.trim(), limit: "50" });
+  if (personId) params.set("personId", personId); else if (person) params.set("person", person);
+  if (filter === "timeline") { if (from) params.set("from", from); if (to) params.set("to", to); }
+  const catalog = useMemoryCatalog(params.toString(), initialMemories, revision, onChanged);
+  const { overview, loading, loadingMore } = catalog;
+  const memories = overview?.memories || [];
+  const filtered = memories;
   const jobs = overview?.jobs || [];
-  const pending = memories.filter((memory) => memory.status === "draft").length;
-  const confirmed = memories.filter(
-    (memory) => memory.status === "confirmed" && !memory.supersededBy,
-  ).length;
+  const pending = overview?.counts?.draft || 0;
+  const confirmed = overview?.counts?.confirmed || 0;
+  const page = filter === "people" ? overview?.peoplePagination : overview?.pagination;
+  const loadedCount = filter === "people" ? overview?.people.length || 0 : memories.length;
   useEffect(() => {
-    if (new URL(window.location.href).searchParams.get("space") === "demo")
-      setSpace("demo");
+    if (new URL(window.location.href).searchParams.get("space") === "demo") setSpace("demo");
   }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let wasActive = false;
-    async function load() {
-      try {
-        const result = await api<MemoryOverview>(
-          "/memory-overview?space=" + space,
-          { signal: controller.signal },
-        );
-        if (controller.signal.aborted) return;
-        setOverview(result);
-        const active = result.jobs.some(
-          (job) => job.status === "running" || job.status === "queued",
-        );
-        if (active) timer = setTimeout(() => void load(), 1500);
-        if (wasActive && !active) void onChanged();
-        wasActive = active;
-      } catch (failure) {
-        if (!controller.signal.aborted)
-          setError(failure instanceof Error ? failure.message : "读取失败");
-      }
-    }
-    void load();
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [space, revision, initialMemories, onChanged]);
+  useEffect(() => { setSelected([]); }, [space, filter, query, person, personId, from, to, overview?.revision]);
   function changeSpace(value: MemorySpace) {
     onClearInspector();
     setSpace(value);
-    setOverview(null);
     setSelected([]);
     setPerson("");
+    setPersonId("");
     setQuery("");
     setError("");
-    setVisible(50);
     const url = new URL(window.location.href);
     if (value === "demo") url.searchParams.set("space", "demo");
     else url.searchParams.delete("space");
@@ -160,37 +147,7 @@ export function MemoryLibrary({
   function changeFilter(value: string) {
     setFilter(value);
     setSelected([]);
-    setVisible(50);
   }
-  const filtered = memories
-    .filter(
-      (memory) =>
-        (filter === "all" || filter === "timeline" || filter === "profile"
-          ? memory.status !== "rejected" &&
-            (filter === "timeline" || !memory.supersededBy)
-          : memory.status === filter) &&
-        (filter !== "profile" ||
-          (memory.category === "profile" && memory.status === "confirmed")) &&
-        (!person || memory.people?.includes(person)) &&
-        (filter !== "timeline" ||
-          ((!from || memory.occurredAt >= from) &&
-            (!to || (!!memory.occurredAt && memory.occurredAt <= to)))) &&
-        (
-          memory.title +
-          memory.content +
-          (memory.people || []).join(" ") +
-          (memory.place || "")
-        )
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-    )
-    .sort((a, b) =>
-      filter === "timeline"
-        ? (b.occurredAt || b.createdAt).localeCompare(
-            a.occurredAt || a.createdAt,
-          )
-        : b.updatedAt.localeCompare(a.updatedAt),
-    );
   async function save() {
     setBusy(true);
     setError("");
@@ -245,7 +202,7 @@ export function MemoryLibrary({
     }
   }
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-5 py-10 sm:px-10 lg:px-12">
+    <div data-testid="memory-library" className="min-h-0 flex-1 overflow-auto px-5 py-10 sm:px-10 lg:px-12">
       <div className="mx-auto max-w-5xl">
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
@@ -253,8 +210,9 @@ export function MemoryLibrary({
             <p className="text-sm text-muted-foreground">
               {confirmed} 条已确认 · {pending} 条待核对
             </p>
+            <MemoryFeatures status={overview?.features} onChanged={() => setRevision((value) => value + 1)} />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Select
               value={space}
               onValueChange={(value) => changeSpace(value as MemorySpace)}
@@ -289,6 +247,8 @@ export function MemoryLibrary({
               <Upload />
               导入经历
             </Button>
+            {space === "personal" && <Button size="sm" variant="outline" disabled={!overview} onClick={() => setPhotoOpen(true)}><ImagePlus data-icon="inline-start" />导入照片</Button>}
+            {space === "personal" && <MemoryDatasetsButton memoryIds={selected} models={models} onOpen={onOpen} />}
           </div>
         </div>
         {space === "demo" && (
@@ -313,18 +273,11 @@ export function MemoryLibrary({
                 ["people", "人物"],
                 ["draft", "待核对"],
                 ["imports", "处理记录"],
+                ["forgotten", "已停用"],
               ].map(([value, label]) => (
                 <TabsTrigger key={value} value={value}>
                   {label}
-                  {value === "draft" &&
-                    memories.some((memory) => memory.status === "draft") && (
-                      <Badge variant="secondary">
-                        {
-                          memories.filter((memory) => memory.status === "draft")
-                            .length
-                        }
-                      </Badge>
-                    )}
+                  {value === "draft" && pending > 0 && <Badge variant="secondary">{pending}</Badge>}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -379,7 +332,7 @@ export function MemoryLibrary({
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setPerson("")}
+                  onClick={() => { setPerson(""); setPersonId(""); }}
                 >
                   {person}
                   <X />
@@ -388,11 +341,13 @@ export function MemoryLibrary({
             </div>
           )}
         </div>
-        {error && !mode && (
-          <p role="alert" className="mb-4 text-sm">
-            {error}
-          </p>
+        {(error || catalog.error) && !mode && (
+          <Alert className="mb-4"><AlertTitle>{error || catalog.error}</AlertTitle>
+            {catalog.error && <AlertDescription><Button variant="ghost" size="sm" onClick={() => setRevision((value) => value + 1)}>刷新</Button></AlertDescription>}
+          </Alert>
         )}
+        {filter === "people" && <div className="mb-4"><MemoryEntitiesButton space={space} onChanged={() => { setRevision((value) => value + 1); void onChanged(); }} /></div>}
+        {filter === "timeline" && <div className="mb-4"><MemoryEventsButton space={space} onOpen={onOpen} onChanged={() => { setRevision((value) => value + 1); void onChanged(); }} /></div>}
         {selected.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <span className="mr-2 text-xs text-muted-foreground">
@@ -417,6 +372,7 @@ export function MemoryLibrary({
             <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
               取消选择
             </Button>
+            {space === "personal" && filter !== "forgotten" && <Button size="sm" variant="outline" onClick={() => setPersonDialog({ ids: selected })}><Users data-icon="inline-start" />关联人物</Button>}
           </div>
         )}
         {selected.length >= 2 && (
@@ -438,7 +394,13 @@ export function MemoryLibrary({
             合并 {selected.length} 条记忆
           </Button>
         )}
-        {filter === "imports" ? (
+        {loading && !overview ? (
+          <div role="status" aria-label="正在读取记忆" className="flex flex-col gap-3">
+            <Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" />
+          </div>
+        ) : filter === "imports" ? (
+          <div className="flex flex-col gap-6">
+          {space === "personal" && !!overview?.captures?.length && <MemoryCaptureList jobs={overview.captures} memories={memories} onOpen={onOpen} onChanged={() => setRevision((value) => value + 1)} />}
           <MemoryImportList
             jobs={jobs}
             memories={memories}
@@ -446,6 +408,7 @@ export function MemoryLibrary({
             onOpen={onOpen}
             onImport={() => setImportOpen(true)}
           />
+          </div>
         ) : filter === "people" ? (
           !overview?.people.length ? (
             <Empty className="min-h-64">
@@ -461,23 +424,21 @@ export function MemoryLibrary({
               <TableHeader>
                 <TableRow>
                   <TableHead>人物称呼</TableHead>
-                  <TableHead>已确认</TableHead>
-                  <TableHead>关联记录</TableHead>
+                  <TableHead>已确认文字记录</TableHead>
+                  <TableHead>提及与标注</TableHead>
+                  <TableHead>身份关联</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {overview.people
-                  .filter((value) =>
-                    value.name.toLowerCase().includes(query.toLowerCase()),
-                  )
-                  .map((value) => (
-                    <TableRow key={value.name}>
+                {overview.people.map((value) => (
+                    <TableRow key={value.id || value.name}>
                       <TableCell>
                         <Button
                           variant="ghost"
                           className="px-0"
                           onClick={() => {
                             setPerson(value.name);
+                            setPersonId(value.id || "");
                             setQuery("");
                             changeFilter("all");
                           }}
@@ -489,7 +450,8 @@ export function MemoryLibrary({
                       <TableCell className="text-muted-foreground">
                         {value.confirmedCount}
                       </TableCell>
-                      <TableCell>{value.memoryIds.length}</TableCell>
+                      <TableCell>{value.memoryCount ?? value.memoryIds.length}</TableCell>
+                      <TableCell><Button size="sm" variant="ghost" onClick={() => setPersonDialog({ person: value, ids: value.memoryIds.slice(0, 50) })}>{value.id ? "编辑别名与关联" : "核对人物"}</Button></TableCell>
                     </TableRow>
                   ))}
               </TableBody>
@@ -523,13 +485,13 @@ export function MemoryLibrary({
                   <Checkbox
                     aria-label="选择全部记忆"
                     checked={filtered
-                      .slice(0, Math.min(visible, 50))
+                      .slice(0, 50)
                       .every((memory) => selected.includes(memory.id))}
                     onCheckedChange={(checked) =>
                       setSelected(
                         checked
                           ? filtered
-                              .slice(0, Math.min(visible, 50))
+                              .slice(0, 50)
                               .map((memory) => memory.id)
                           : [],
                       )
@@ -544,7 +506,7 @@ export function MemoryLibrary({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.slice(0, visible).map((memory) => (
+              {filtered.map((memory) => (
                 <TableRow key={memory.id}>
                   <TableCell>
                     <Checkbox
@@ -584,7 +546,7 @@ export function MemoryLibrary({
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {memory.supersededBy
+                      {memory.forgottenAt || memory.sourceSuppressed ? "已停用" : memory.supersededBy
                         ? "历史记录"
                         : overview?.conflicts[memory.id]?.length
                           ? "待处理冲突"
@@ -597,7 +559,7 @@ export function MemoryLibrary({
                   </TableCell>
                   <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
                     {filter === "timeline"
-                      ? memory.occurredAt || "时间未确定"
+                      ? memory.occurredAt || memory.validity?.expression || "时间未确定"
                       : memory.sources.length
                         ? `${memory.sources.length} 处资料`
                         : "你的陈述"}
@@ -607,22 +569,18 @@ export function MemoryLibrary({
             </TableBody>
           </Table>
         )}
-        {filter !== "imports" &&
-          filter !== "people" &&
-          filtered.length > visible && (
-            <Button
-              variant="ghost"
-              className="mt-4 w-full"
-              onClick={() => setVisible((value) => value + 50)}
-            >
-              加载更多 · 还有 {filtered.length - visible} 条
-            </Button>
-          )}
+        {filter !== "imports" && page?.nextCursor && (
+          <Button variant="ghost" className="mt-4 w-full" disabled={loadingMore || loading}
+            onClick={() => catalog.loadMore(page.nextCursor!)}>
+            {loadingMore ? "正在读取" : `加载更多 · 还有 ${page.total - loadedCount} 条`}
+          </Button>
+        )}
         {importOpen && (
           <MemoryImportDialog
             space={space}
             assets={assets}
             models={models}
+            defaultModelId={overview?.settings?.textModelId}
             onClose={() => setImportOpen(false)}
             onStarted={(job) => {
               if (job.space !== space) changeSpace(job.space);
@@ -633,6 +591,10 @@ export function MemoryLibrary({
             }}
           />
         )}
+        {photoOpen && <PhotoImportDialog assets={assets} models={models} defaultModelId={overview?.settings?.photoModelId}
+          onClose={() => { setPhotoOpen(false); void onChanged(); }}
+          onStarted={() => { setPhotoOpen(false); changeFilter("imports"); setRevision((value) => value + 1); void onChanged(); }} />}
+        {personDialog && <MemoryPersonDialog person={personDialog.person} initialIds={personDialog.ids} memories={memories} onClose={() => setPersonDialog(null)} onSaved={() => { setSelected([]); setRevision((value) => value + 1); void onChanged(); }} />}
         <Dialog
           open={!!mode}
           onOpenChange={(open) => {

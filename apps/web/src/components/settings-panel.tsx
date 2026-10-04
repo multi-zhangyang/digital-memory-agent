@@ -32,6 +32,7 @@ import type {
 import { LoaderCircle, Plug, Plus, Settings2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { HarnessSettingsPanel } from "./harness-settings";
+import { MemorySettingsPanel } from "./memory-settings";
 
 export function SettingsPanel({
   configuration,
@@ -98,6 +99,7 @@ export function SettingsPanel({
               <Settings2 className="size-4" />
               Agent 配置
             </TabsTrigger>
+            <TabsTrigger value="memory">个人记忆</TabsTrigger>
           </TabsList>
           <TabsContent value="models" className="min-w-0 space-y-6">
             <div className="flex items-center justify-between gap-3">
@@ -157,6 +159,7 @@ export function SettingsPanel({
               />
             )}
           </TabsContent>
+          <TabsContent value="memory" className="min-w-0"><MemorySettingsPanel models={configuration?.models || []} /></TabsContent>
         </Tabs>
       </div>
     </div>
@@ -173,6 +176,7 @@ function values(provider: ProviderStatus): ConnectionUpdate {
     maxTokens: provider.maxTokens,
     reasoning: provider.reasoning,
     thinkingLevel: provider.thinkingLevel,
+    supportsImages: provider.supportsImages ?? false,
   };
 }
 
@@ -414,6 +418,11 @@ function ProviderForm({
                         <FieldLabel htmlFor={fieldId("reasoning")}>
                           思考模型
                         </FieldLabel>
+                      </Field>
+                      <Field orientation="horizontal">
+                        <Switch id={fieldId("vision")} aria-label="支持图片输入" disabled={busy}
+                          checked={form.supportsImages ?? false} onCheckedChange={(checked) => update("supportsImages", checked)} />
+                        <FieldLabel htmlFor={fieldId("vision")}>支持图片输入</FieldLabel>
                       </Field>
                     </FieldGroup>
                   </AccordionContent>

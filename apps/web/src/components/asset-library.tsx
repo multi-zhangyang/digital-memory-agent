@@ -56,6 +56,9 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import dynamic from "next/dynamic";
+const EvidenceSearchDialog = dynamic(() => import("./evidence-search").then((module) => module.EvidenceSearchDialog));
+const VideoSourceViewer = dynamic(() => import("./video-source-viewer").then((module) => module.VideoSourceViewer));
 
 export function AssetLibrary({
   assets,
@@ -64,6 +67,8 @@ export function AssetLibrary({
   onPreview,
   onCollection,
   title = "资料库",
+  onProcessing,
+  onMemory,
 }: {
   assets: Asset[];
   onChanged: () => Promise<void>;
@@ -71,6 +76,8 @@ export function AssetLibrary({
   onPreview?: (asset: Asset) => void;
   onCollection?: (ids: string[]) => void;
   title?: string;
+  onProcessing?: () => void;
+  onMemory?: (id: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -83,6 +90,8 @@ export function AssetLibrary({
   const [previewError, setPreviewError] = useState(false);
   const [textPreview, setTextPreview] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [processing, setProcessing] = useState(false);
   function openPreview(asset: Asset) {
     if (onPreview) onPreview(asset);
     else {
@@ -168,6 +177,9 @@ export function AssetLibrary({
             {title}
             <Badge variant="secondary">{assets.length}</Badge>
           </h1>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setSearchOpen(true)}>检索内容</Button>
+          {onProcessing && <Button variant="ghost" size="sm" onClick={onProcessing}>处理与核对</Button>}
           <Button
             onClick={() => input.current?.click()}
             disabled={!!uploading}
@@ -180,6 +192,7 @@ export function AssetLibrary({
             )}
             {uploading || "导入"}
           </Button>
+          </div>
         </div>
         {!!selected.length && (
           <div className="mt-5 flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 p-3">
@@ -189,6 +202,14 @@ export function AssetLibrary({
                 交给 Agent
               </Button>
             )}
+            <Button size="sm" variant="outline" disabled={processing} onClick={async () => {
+              setProcessing(true); setNotice("");
+              try {
+                await api("/asset-processing", { method: "POST", body: JSON.stringify({ requestId: crypto.randomUUID(), assetIds: selected }) });
+                setNotice(`已提交 ${selected.length} 份资料`); await onChanged();
+              } catch (failure) { setNotice(failure instanceof Error ? failure.message : "提交失败"); }
+              finally { setProcessing(false); }
+            }}>{processing ? "正在提交" : "处理所选"}</Button>
             {onCollection && (
               <Button
                 size="sm"
@@ -440,13 +461,8 @@ export function AssetLibrary({
                     preview.mimeType,
                   ) &&
                   !previewError ? (
-                  <video
-                    controls
-                    preload="metadata"
-                    src={assetUrl(preview.id)}
-                    onError={() => setPreviewError(true)}
-                    className="max-h-[60dvh] w-full"
-                  />
+                  <VideoSourceViewer key={preview.id} assetId={preview.id} name={preview.name} version={preview.sha256}
+                    onMemory={onMemory ? (id) => { setPreview(null); void onChanged(); onMemory(id); } : undefined} />
                 ) : preview.kind === "text" && !previewError ? (
                   textPreview === null ? (
                     <LoaderCircle
@@ -476,6 +492,7 @@ export function AssetLibrary({
           )}
         </DialogContent>
       </Dialog>
+      {searchOpen && <EvidenceSearchDialog onClose={() => setSearchOpen(false)} onUse={onUse} onMemory={onMemory} />}
     </div>
   );
 }

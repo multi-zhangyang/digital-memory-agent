@@ -32,6 +32,7 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {
   ComposerContextMenu,
@@ -162,7 +163,17 @@ export function WorkbenchComposer({
     "assets" | "commands" | "settings" | null
   >(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [captureDefault, setCaptureDefault] = useState(true);
+  useEffect(() => {
+    if (dialog !== "settings") return;
+    const controller = new AbortController();
+    void api<{ settings: { capture: string } }>("/memory-settings", { signal: controller.signal }).then((result) => {
+      if (!controller.signal.aborted) setCaptureDefault(result.settings.capture === "graded");
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [dialog]);
   const [uploading, setUploading] = useState("");
+  const [uploadFailures, setUploadFailures] = useState<{ file: File; error: string }[]>([]);
   const [error, setError] = useState("");
   const uploadInput = useRef<HTMLInputElement>(null);
   const uploadLock = useRef(false);
@@ -170,6 +181,7 @@ export function WorkbenchComposer({
   const menuRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<ComposerToken | null>(null);
   const latest = useRef(draft);
+  useEffect(() => { setUploadFailures([]); }, [draftKey]);
   latest.current = draft;
   const model =
     models.find(
@@ -263,20 +275,19 @@ export function WorkbenchComposer({
     setError("");
     try {
       for (const [index, file] of Array.from(files).entries()) {
-        if (latest.current.assetIds.length >= 30)
-          throw new Error("每个任务最多选择 30 份资料");
-        setUploading(`${file.name} · ${index + 1}/${files.length}`);
-        const form = new FormData();
-        form.append("file", file);
-        const { asset } = await api<{ asset: Asset }>("/assets", {
-          method: "POST",
-          body: form,
-        });
-        onUploaded(asset);
-        patch({
-          assetIds: [...new Set([...latest.current.assetIds, asset.id])],
-          scope: "selected",
-        });
+        try {
+          if (latest.current.assetIds.length >= 30) throw new Error("每个任务最多选择 30 份资料");
+          setUploading(`${file.name} · ${index + 1}/${files.length}`);
+          const form = new FormData();
+          form.append("file", file);
+          const { asset } = await api<{ asset: Asset }>("/assets?processing=requested", { method: "POST", body: form });
+          onUploaded(asset);
+          patch({ assetIds: [...new Set([...latest.current.assetIds, asset.id])], scope: "selected" });
+          setUploadFailures((previous) => previous.filter((failure) => failure.file !== file));
+        } catch (failure) {
+          setUploadFailures((previous) => [...previous.filter((item) => item.file !== file),
+            { file, error: failure instanceof Error ? failure.message : "上传失败" }]);
+        }
       }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "上传失败");
@@ -353,6 +364,22 @@ export function WorkbenchComposer({
           {error}
         </p>
       )}
+      {uploadFailures.length > 0 && (
+        <div className="mb-2 flex flex-col gap-2">
+          {uploadFailures.map(({ file, error: failure }, index) => (
+            <Alert key={`${file.name}-${index}`}>
+              <AlertTitle>{file.name} · 上传失败</AlertTitle>
+              <AlertDescription>
+                <p>{failure}</p>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" disabled={!!uploading} onClick={() => void upload([file])} aria-label={`重试上传 ${file.name}`}>重试</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setUploadFailures((previous) => previous.filter((item) => item.file !== file))}>移除</Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          ))}
+        </div>
+      )}
       <ComposerContextMenu
         token={token}
         projectId={projectId}
@@ -383,6 +410,7 @@ export function WorkbenchComposer({
                 onSteer &&
                 sendMode !== "queue" &&
                 !latest.current.fileReferences?.length &&
+                !latest.current.assetIds.length &&
                 !localCommand
               )
                 await onSteer(sendMode as "steer" | "followUp");
@@ -792,7 +820,7 @@ export function WorkbenchComposer({
                   }
                   status={submitting ? "submitted" : "ready"}
                   disabled={
-                    submitting || !!uploading || !draft.text.trim() || !model
+                    submitting || !!uploading || (!draft.text.trim() && !draft.assetIds.length) || !model
                   }
                   className="ml-1 rounded-full"
                 >
@@ -928,6 +956,10 @@ export function WorkbenchComposer({
                 checked={draft.useMemory}
                 onCheckedChange={(useMemory) => patch({ useMemory })}
               />
+            </Field>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="capture-personal-memory">自动记录个人陈述</FieldLabel>
+              <Switch id="capture-personal-memory" disabled={continuing} checked={draft.captureMemory ?? captureDefault} onCheckedChange={(captureMemory) => patch({ captureMemory })} />
             </Field>
           </div>
         </DialogContent>

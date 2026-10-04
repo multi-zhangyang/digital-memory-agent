@@ -1,12 +1,18 @@
-import { open } from "node:fs/promises";
-import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { ToolInfo } from "@memory/contracts";
 import type { Store } from "./store.js";
 import { createWorkspaceTools } from "./workspace-tools.js";
+import { EvidenceService } from "./memory/evidence-service.js";
+import { UserFacingError } from "./errors.js";
 
 export const memoryToolCatalog: ToolInfo[] = [
+  { name: "inspect_memories", label: "检查记忆记录", access: "read", group: "memory" },
+  { name: "change_memories", label: "修改记忆记录", access: "write", group: "memory" },
+  { name: "manage_memory_links", label: "调整人物与事件关联", access: "write", group: "memory" },
+  { name: "search_evidence", label: "检索素材证据", access: "read", group: "memory" },
+  { name: "read_evidence", label: "读取原始证据", access: "read", group: "memory" },
+  { name: "inspect_source_people", label: "检查素材人物", access: "read", group: "memory" },
   { name: "search_assets", label: "查找资料", access: "read" },
   { name: "read_asset_text", label: "读取文字", access: "read" },
   {
@@ -39,6 +45,16 @@ export const memoryToolCatalog: ToolInfo[] = [
     access: "read",
     group: "memory",
   },
+  { name: "process_assets", label: "处理资料", access: "write", group: "memory" },
+  { name: "query_events", label: "查询事件", access: "read", group: "memory" },
+  { name: "build_dataset", label: "构建数据集", access: "write", group: "memory" },
+  { name: "rebuild_dataset", label: "从当前记忆重建数据集", access: "write", group: "memory" },
+  { name: "audit_dataset", label: "批量核验训练样本", access: "write", group: "memory" },
+  { name: "inspect_dataset", label: "检查训练样本", access: "read", group: "memory" },
+  { name: "review_dataset", label: "核对与修订训练样本", access: "write", group: "memory" },
+  { name: "deliver_dataset", label: "核验并交付训练文件", access: "read", group: "memory" },
+  { name: "read_job_result", label: "读取作业结果", access: "read", group: "workspace" },
+  { name: "manage_job", label: "管理后台作业", access: "write", group: "workspace" },
   { name: "ask_user", label: "等待补充", access: "write", group: "workspace" },
 ];
 
@@ -49,23 +65,10 @@ function result(value: unknown) {
   };
 }
 
-export function toolOutput(value: unknown): unknown {
-  const content = (
-    value as { content?: Array<{ type: string; text?: string }> }
-  )?.content;
-  const text =
-    content
-      ?.filter((part) => part.type === "text")
-      .map((part) => part.text || "")
-      .join("\n") || "";
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
+export { toolOutput } from "./integrations/pi/tool-output.js";
 
 export function createMemoryTools(store: Store, conversationId?: string) {
+  const evidence = new EvidenceService(store);
   const active = () =>
     conversationId ? store.work.activeRun(conversationId) : undefined;
   return [
@@ -129,7 +132,7 @@ export function createMemoryTools(store: Store, conversationId?: string) {
       name: "read_asset_text",
       label: "读取文字",
       description:
-        "Read a bounded UTF-8 text excerpt from a local asset identified by search_assets. Returns the original asset ID and byte offsets for evidence. Does not interpret images or video. Use nextOffset to continue reading.",
+        "Read a bounded, hash-verified UTF-8 page from an original text asset. Use nextOffset to continue. Original text is preserved for traceability; memoryContext.memories carries associated CURRENT confirmed interpretations and user corrections. For personal facts prefer those confirmed revisions over old wording in text; use search_memories if coverage is incomplete. Does not interpret images/video or bypass stopped sources.",
       parameters: Type.Object(
         {
           assetId: Type.String({
@@ -152,51 +155,21 @@ export function createMemoryTools(store: Store, conversationId?: string) {
           throw new Error("虚构示例只在示例空间中使用，不属于个人资料。");
         if (asset.kind !== "text")
           throw new Error("这份资料不是可读取的文字文件。");
-        const offset = params.offset ?? 0;
-        if (offset > asset.size) throw new Error("读取位置超出文件范围。");
-        const length = Math.min(params.maxBytes ?? 12000, asset.size - offset);
-        try {
-          const file = await open(join(store.assetsDir, asset.id), "r");
-          try {
-            const { buffer, bytesRead } = await file.read(
-              Buffer.alloc(length),
-              0,
-              length,
-              offset,
-            );
-            signal?.throwIfAborted();
-            const text = new TextDecoder("utf-8", {
-              fatal: true,
-              ignoreBOM: true,
-            }).decode(buffer.subarray(0, bytesRead), {
-              stream: offset + bytesRead < asset.size,
-            });
-            const end = offset + Buffer.byteLength(text, "utf8");
-            if (run)
-              store.work.source(run.id, {
-                assetId: asset.id,
-                name: asset.name,
-                sha256: asset.sha256,
-                start: offset,
-                end,
-              });
-            return result({
-              assetId: asset.id,
-              name: asset.name,
-              text,
-              offset,
-              nextOffset: end < asset.size ? end : null,
-              size: asset.size,
-            });
-          } finally {
-            await file.close();
-          }
-        } catch {
-          if (signal?.aborted) throw new Error("已停止读取。");
-          throw new Error(
-            "无法读取文字，请确认文件为 UTF-8 编码且读取位置有效。",
-          );
+        const read = await evidence.read("asset:" + asset.id,
+          { allowedAssetIds: run?.scope === "selected" ? run.assetIds : undefined, allowObservations: run?.useMemory !== false },
+          { offset: params.offset, limit: params.maxBytes ?? 12000, signal });
+        signal?.throwIfAborted();
+        if (run) {
+          const latest = active();
+          if (!latest || latest.id !== run.id || !["running", "waiting"].includes(latest.status) || latest.memoryEpoch !== run.memoryEpoch)
+            throw new UserFacingError(409, "RUN_CHANGED", "任务或依据已改变，请重新读取");
+          store.work.source(run.id, { assetId: asset.id, name: asset.name, sha256: asset.sha256,
+            start: read.source!.start, end: read.source!.end, quote: read.source!.text });
         }
+        return result({ sourceRef: run ? store.work.recordRef(run.id, "source", _id, 1) : undefined,
+          assetId: asset.id, name: asset.name, text: read.source!.text, offset: read.source!.start,
+          nextOffset: read.nextOffset, size: asset.size, verification: read.verification, sha256: asset.sha256,
+          ...(read.memoryContext ? { memoryContext: read.memoryContext } : {}) });
       },
     }),
     ...createWorkspaceTools(store, conversationId),

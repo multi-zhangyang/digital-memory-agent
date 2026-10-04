@@ -1,0 +1,637 @@
+{
+  "version": 1,
+  "scope": "许可明确的公开素材。来源元数据只用于归属和匿名人物真值，不提供给编码器或视觉模型。公开原件在忽略目录内；其中部分下载摘要仍待补齐。",
+  "images": [
+    {
+      "id": "object-01",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Caf%C3%A9_Tortoni_cup_and_saucer.JPG",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-01.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/d/d5/Caf%C3%A9_Tortoni_cup_and_saucer.JPG",
+      "author": "Lars Curfs (Grashoofd)",
+      "license": "CC BY-SA 3.0 nl",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/nl/deed.en",
+      "bytes": 6831431,
+      "sha256": "568670c64206d80f7b510cb63a259bf972a4b3d4ac5394f3c9aabcf6fdd95960",
+      "dimensions": [
+        5184,
+        3456
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "白色有柄杯放在白色碟上，杯沿和碟沿有蓝色细线。",
+          "杯中有残留痕迹，金属勺斜向右上。",
+          "下方是有大理石纹理的硬质台面。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model",
+        "visibleText": "CAFE TORTONI；只要求清晰部分，不补全其他小字。"
+      }
+    },
+    {
+      "id": "object-02",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Coffee_with_Cream_and_Sugar_(6703560771).jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-02.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Coffee_with_Cream_and_Sugar_%286703560771%29.jpg",
+      "author": "TheCulinaryGeek from Chicago, USA",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "bytes": 58676,
+      "sha256": "e5cbc7961e88f84d6f0ecf0718336c0813b00aafbe6481e0f038bfa6050c4de9",
+      "dimensions": [
+        1024,
+        681
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "白杯及白碟，杯柄朝右，杯中为浅棕色带泡沫液体。",
+          "金属勺伸向右上，右后方透明小壶中有白色液体。",
+          "左后方有透明容器，背景和桌面以白色为主。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "object-03",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Frothy_coffee_in_a_green_cup_(Unsplash).jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-03.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/7/7d/Frothy_coffee_in_a_green_cup_%28Unsplash%29.jpg",
+      "author": "Clem Onojeghuo clemono2",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "bytes": 18738570,
+      "sha256": "aed602cdd372938d5fbf142bd3d4a1e9ffe33fee5931eed015c45921bbc8abf4",
+      "dimensions": [
+        5488,
+        3659
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "绿色有柄杯与绿色碟，杯柄朝右。",
+          "杯中白色泡沫表面有褐色粉末或斑块，盘上有深色勺柄。",
+          "下方是磨损的深色木桌，背景模糊可见手握玻璃杯。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "object-04",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Cofee_Espresso_in_french_cafe.jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-04.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/3/32/Cofee_Espresso_in_french_cafe.jpg",
+      "author": "Serenade",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "bytes": 623408,
+      "sha256": "4a1cd942b6de732e4d3aa589f777f953c99c64db75c8d4a947e5d254f1a353d3",
+      "dimensions": [
+        1552,
+        2592
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "俯拍白杯和白碟，杯中棕色液体。",
+          "金属勺在杯子左侧的碟上，背景为浅棕色织纹表面。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "object-05",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Tomato_soup.jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-05.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/b/b5/Tomato_soup.jpg",
+      "author": "Stu Spivack (Flickr: stu_spivack)",
+      "license": "CC BY-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+      "bytes": 2187908,
+      "sha256": "6ccc095ff0f568e074e93bb507c0c9c8ff93b02009eaa51b28ae70849f46329c",
+      "dimensions": [
+        2560,
+        1920
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "authorEvidence": "https://commons.wikimedia.org/wiki/File:Tomato_soup.jpg",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "盛橙红色液体的浅碗或深盘，内圈白色，外沿很宽且呈深绿色。",
+          "背景局部有黑色器具和透明袋，不能据此确定配方。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "object-06",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Miso_Soup.jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-06.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/0/00/Miso_Soup.jpg",
+      "author": "ish-ka",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 82095,
+      "sha256": "e028826cdcd95d7df01aa168ba25118bf81f07709d326adfe22cbfb107f38874",
+      "dimensions": [
+        640,
+        480
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "黑色碗里有浅黄色浑浊液体，内有浅色块状物和绿色片状物。",
+          "碗放在木纹桌面上，前方横放深色筷子。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "object-07",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Egg_drop_soup.jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-07.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/6/6c/Egg_drop_soup.jpg",
+      "author": "Stu Spivack (Flickr: stu_spivack)",
+      "license": "CC BY-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+      "bytes": 393676,
+      "sha256": "62c27260ef66ea059a89aee52f0bd5c124c2bd6d11ba9f39158ec205822e2b06",
+      "dimensions": [
+        1760,
+        1168
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "authorEvidence": "https://commons.wikimedia.org/wiki/File:Egg_drop_soup.jpg",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "蓝白花纹碗放在匹配的蓝白花纹盘上。",
+          "碗内浅黄色浑浊液体，有浅色丝片或絮状物。",
+          "底下的花纹是盘的一部分，不能描述成覆盖桌面的花纹布。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "object-08",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Chicken_noodle_soup_(1).jpg",
+      "kind": "object",
+      "faceGroups": [],
+      "file": "object-08.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/c/c3/Chicken_noodle_soup_%281%29.jpg",
+      "author": "Bruin from Columbus, Ohio, U.S.A.",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "bytes": 1568416,
+      "sha256": "e27a5c2c9f06a1f1650720485bd0cbfba5b58b0ed8e3ffbff0d1238f4f61c398",
+      "dimensions": [
+        3008,
+        2000
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 0,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "黑色双柄锅，锅中为宽条状面食和浅黄色汤汁。",
+          "可见橙色小块和浅色碎丝，肉类与调味配方无法由画面确认。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "person-a-1",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Michelle_Obama_official_portrait_headshot.jpg",
+      "kind": "people",
+      "faceGroups": [
+        "a"
+      ],
+      "file": "person-a-1.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/5/53/Michelle_Obama_official_portrait_headshot.jpg",
+      "author": "Joyce Boghosian",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 840039,
+      "sha256": "2d5d0909f8dafc9738498d18f935177546c99b0b394e524760553a5cad63d660",
+      "dimensions": [
+        894,
+        1195
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "person-a-2",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Michelle_Obama_2013_official_portrait.jpg",
+      "kind": "people",
+      "faceGroups": [
+        "a"
+      ],
+      "file": "person-a-2.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Michelle_Obama_2013_official_portrait.jpg",
+      "author": "Official White House Photo by Chuck Kennedy",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 1206924,
+      "sha256": "fa3d0588071df873142d916328e16fd856d7d96dcd4d8dbffb7c28b1bf7f1cde",
+      "dimensions": [
+        2722,
+        4096
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "person-b-1",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:George-W-Bush.jpeg",
+      "kind": "people",
+      "faceGroups": [
+        "b"
+      ],
+      "file": "person-b-1.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/d/d4/George-W-Bush.jpeg",
+      "author": "Eric Draper",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 1936324,
+      "sha256": "59207a3f480eb56547b4e38c6e82ecb6871a3a37c5dcce6c682207fa8c8a75b4",
+      "dimensions": [
+        2267,
+        3000
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "person-b-2",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Official_Portrait-_President_George_Walker_Bush,_43rd_President_of_the_United_States,_Republican_-_DPLA_-_7482eac0e113bf03014d1686a3733f97.jpeg",
+      "kind": "people",
+      "faceGroups": [
+        "b"
+      ],
+      "file": "person-b-2.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/c/c5/Official_Portrait-_President_George_Walker_Bush%2C_43rd_President_of_the_United_States%2C_Republican_-_DPLA_-_7482eac0e113bf03014d1686a3733f97.jpeg",
+      "author": "Department of Defense. American Forces Information Service. Defense Visual Information Center. 1994",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 2066535,
+      "sha256": "633bd1a34cae9874b5c4516adc95ced1e92d8ed57435b0a88695875652a63a0e",
+      "dimensions": [
+        2400,
+        3000
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "person-c-1",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Laura_Bush_2018_(cropped).jpg",
+      "kind": "people",
+      "faceGroups": [
+        "c"
+      ],
+      "file": "person-c-1.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/9/93/Laura_Bush_2018_%28cropped%29.jpg",
+      "author": "Official White House Photo by Shealah Craighead",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 105338,
+      "sha256": "ebdc62c93c68198d603cfc56b9d30f7542ba9348a9d81032fb307aeb537b0617",
+      "dimensions": [
+        388,
+        555
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "group-1",
+      "split": "development",
+      "source": "https://commons.wikimedia.org/wiki/File:Laura_and_George_Bush_walking_out_Entrance_Hall.jpg",
+      "kind": "people",
+      "faceGroups": [],
+      "file": "group-1.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/8/8d/Laura_and_George_Bush_walking_out_Entrance_Hall.jpg",
+      "author": "White House  (Joyce N. Boghosian)",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 108170,
+      "sha256": "536e5056cffac8f022e6ca81124a4a67bc8b46a3b158dd32d24f2c3bfa73b3b9",
+      "dimensions": [
+        515,
+        772
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 4,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "门前红色地毯，中间两人并排站立或走动，两侧各一人穿深色制服。",
+          "四张前景人脸可见；门内暗处背景人影不计入可核对人脸数量。",
+          "不得由面孔补出姓名、亲属关系、用户经历或拍摄时间。"
+        ],
+        "unsupported": "不确认用户到访、所有权、喜好、关系或日期。菜名、液体成分与具体肉类若提及只能是不确定推断。",
+        "reviewStatus": "pixels-reviewed-before-model"
+      }
+    },
+    {
+      "id": "person-a-3",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Michelle_Obama_with_Bo_official_portrait_(cropped).jpg",
+      "kind": "people",
+      "faceGroups": [
+        "a"
+      ],
+      "file": "person-a-3.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/1/1d/Michelle_Obama_with_Bo_official_portrait_%28cropped%29.jpg",
+      "author": "Lawrence Jackson, official White House photographer",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 254106,
+      "sha256": "1cb2f71090432881ad0cb9c4e0d58205ea428bc035a58831b4a2fa6f399bba7c",
+      "dimensions": [
+        872,
+        1197
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "person-d-1",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamala_Harris_official_photo.jpg",
+      "kind": "people",
+      "faceGroups": [
+        "d"
+      ],
+      "file": "person-d-1.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/3/30/Senator_Kamala_Harris_Official_Portrait.jpg",
+      "author": "Renee Bouchard",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 1636244,
+      "sha256": "0b6bd423e58a202bd3d9cc2c2e6bdc2b72db484aab81438296e4a07b679eae78",
+      "dimensions": [
+        4032,
+        6048
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "person-d-2",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamala_Harris_Vice_Presidential_Portrait.jpg",
+      "kind": "people",
+      "faceGroups": [
+        "d"
+      ],
+      "file": "person-d-2.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/4/41/Kamala_Harris_Vice_Presidential_Portrait.jpg",
+      "author": "Lawrence Jackson",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 4707575,
+      "sha256": "69218c08f5834e8befba25bec00d83d70d68309cf0c96acaa436c034708882e0",
+      "dimensions": [
+        2400,
+        3000
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 1,
+      "vision": false
+    },
+    {
+      "id": "group-2",
+      "split": "holdout",
+      "source": "https://commons.wikimedia.org/wiki/File:Five_U.S._first_ladies_in_2013.jpg",
+      "kind": "people",
+      "faceGroups": [],
+      "file": "group-2.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/9/95/Five_U.S._first_ladies_in_2013.jpg",
+      "author": "White House/Lawrence Jackson",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "bytes": 1501335,
+      "sha256": "b4fda650b8fb800a482feac6d580f3fe37e970a3b084074c5de649a99fcf41d6",
+      "dimensions": [
+        4096,
+        2731
+      ],
+      "changes": "原文件未修改。评测预览与模型缩放单独记录。",
+      "independent": true,
+      "expectedFaces": 5,
+      "vision": true,
+      "pixelRubric": {
+        "required": [
+          "室外浅色石地面上，五名成年人并排站立，后方为深色玻璃门窗。",
+          "左起服装分别为浅蓝色裙装、深蓝色裙装、灰褐色花纹外套、黑色衣服及紫色围巾、浅灰色套装。",
+          "五张前景人脸可见，不能凭面孔补出姓名、关系、用户经历或拍摄时间。"
+        ],
+        "unsupported": "不确认人物真实身份、社会关系、用户到访或拍摄日期。",
+        "reviewStatus": "pixel-reviewed-before-holdout-output"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "object-01-q1",
+      "split": "development",
+      "query": "哪张照片的白杯和白碟边沿有蓝色细线？",
+      "expected": [
+        "object-01"
+      ]
+    },
+    {
+      "id": "object-01-q2",
+      "split": "development",
+      "query": "找杯沿和碟沿有蓝色细线、杯中插着勺子、桌面有大理石纹路的杯子照片。",
+      "expected": [
+        "object-01"
+      ]
+    },
+    {
+      "id": "object-02-q1",
+      "split": "development",
+      "query": "哪张照片里白杯后面有装白色液体的透明小壶？",
+      "expected": [
+        "object-02"
+      ]
+    },
+    {
+      "id": "object-02-q2",
+      "split": "development",
+      "query": "找白色桌面上有一杯浅棕色饮料，右后方还有装白色液体小壶的照片。",
+      "expected": [
+        "object-02"
+      ]
+    },
+    {
+      "id": "object-03-q1",
+      "split": "holdout",
+      "query": "哪张照片里绿色杯碟放在磨损的深色木桌上？",
+      "expected": [
+        "object-03"
+      ]
+    },
+    {
+      "id": "object-03-q2",
+      "split": "holdout",
+      "query": "找木桌上绿色有柄杯里有白色泡沫和褐色粉末，后面有人握着玻璃杯的照片。",
+      "expected": [
+        "object-03"
+      ]
+    },
+    {
+      "id": "object-04-q1",
+      "split": "holdout",
+      "query": "哪张照片是俯拍白色杯碟，勺子放在杯子左边？",
+      "expected": [
+        "object-04"
+      ]
+    },
+    {
+      "id": "object-04-q2",
+      "split": "holdout",
+      "query": "找从正上方拍摄、白杯里盛棕色液体、银色勺子在左侧白碟上的照片。",
+      "expected": [
+        "object-04"
+      ]
+    },
+    {
+      "id": "object-05-q1",
+      "split": "development",
+      "query": "哪张照片里装橙红色汤汁的碗有深绿色宽边？",
+      "expected": [
+        "object-05"
+      ]
+    },
+    {
+      "id": "object-05-q2",
+      "split": "development",
+      "query": "找一张白色内壁、深绿色宽边的碗里盛着橙红色液体，背景有黑色器具的照片。",
+      "expected": [
+        "object-05"
+      ]
+    },
+    {
+      "id": "object-06-q1",
+      "split": "development",
+      "query": "哪张照片里黑碗前面横放着筷子？",
+      "expected": [
+        "object-06"
+      ]
+    },
+    {
+      "id": "object-06-q2",
+      "split": "development",
+      "query": "找木纹桌面上放着黑碗，碗里有浅色方块和绿色片状物，前方摆着筷子的照片。",
+      "expected": [
+        "object-06"
+      ]
+    },
+    {
+      "id": "object-07-q1",
+      "split": "holdout",
+      "query": "哪张照片里浅黄色汤汁盛在蓝白花纹碗中？",
+      "expected": [
+        "object-07"
+      ]
+    },
+    {
+      "id": "object-07-q2",
+      "split": "holdout",
+      "query": "找蓝白花纹碗放在同样花纹的盘上，碗中是浅黄色带絮状物液体的照片。",
+      "expected": [
+        "object-07"
+      ]
+    },
+    {
+      "id": "object-08-q1",
+      "split": "holdout",
+      "query": "哪张照片里黑色双柄锅盛着宽面条？",
+      "expected": [
+        "object-08"
+      ]
+    },
+    {
+      "id": "object-08-q2",
+      "split": "holdout",
+      "query": "找黑色双柄锅中有宽面条、浅黄色汤汁、橙色小块和浅色碎丝的照片。",
+      "expected": [
+        "object-08"
+      ]
+    }
+  ]
+}

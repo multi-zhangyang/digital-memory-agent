@@ -1,5 +1,7 @@
 # 第二阶段：界面、工具与模型配置
 
+> 历史阶段记录：保留当时的决策、实测和限制。当前产品以 [产品定义](../product.md)、[架构](../architecture.md) 和 [Harness 重构计划](0018-harness-refactor.md) 为准。
+
 ## 范围
 
 产品统一命名为 digital memory，默认黑白深色、风格对齐 Vercel。积极采用官方 shadcn/ui 与 AI Elements，不另造基础控件或独立视觉样式。模型配置从前端完成，Agent 的真实工具调用可见并随会话保留。

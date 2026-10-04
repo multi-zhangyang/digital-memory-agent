@@ -9,7 +9,7 @@ import { access, readdir, realpath, stat } from "node:fs/promises";
 import { homedir, hostname, release } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { DirectoryListing } from "@memory/contracts";
-import { UserFacingError } from "./runtime.js";
+import { UserFacingError } from "./harness/runtime.js";
 
 export function isWithin(root: string, path: string) {
   const rel = relative(root, path);

@@ -74,6 +74,11 @@ async function fixture(projectPath?: string) {
           ],
         ],
         mcp: [["mcp__fixture__echo", { text: "hello" }]],
+        "nullable-artifact": [
+          ["write_artifact", { title: "实际作业说明", content: "此条用于验证新建结果，不包含个人事实。", sourceAssetIds: [], artifactId: null, version: null }],
+          ["read_artifact", { artifactId: null }],
+          ["write_artifact", { title: "不能伪造目标", content: "错误 ID 必须被拒绝。", sourceAssetIds: [], artifactId: "00000000-0000-0000-0000-000000000000", version: 1 }],
+        ],
       };
       const call = calls[prompt]?.[count];
       if (!req.body.stream)
@@ -167,6 +172,8 @@ async function fixture(projectPath?: string) {
     expect(response.statusCode, response.body).toBeLessThan(300);
     return response.json();
   };
+  // These assertions count foreground requests; capture has its own integration suite.
+  await api("/memory-settings", { capture: "off" }, "PATCH");
   const opened = projectPath
     ? await api("/projects/open", { path: projectPath })
     : undefined;
@@ -197,6 +204,18 @@ async function fixture(projectPath?: string) {
   };
   return { directory, app, api, conversation, start, wait, requests, config };
 }
+it("accepts nullable creation and listing through Pi while rejecting invented artifact IDs", async () => {
+  const f = await fixture();
+  const completed = await f.wait((await f.start("nullable-artifact", "auto")).id);
+  const tools = completed.parts.filter((part) => part.type === "tool");
+  expect(tools.map((part) => part.state)).toEqual(["complete", "complete", "error"]);
+  const saved = (await f.api("/workspace", undefined, "GET")).artifacts;
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ title: "实际作业说明", version: 1 });
+  expect(saved[0].id).not.toBe("00000000-0000-0000-0000-000000000000");
+  const schema = f.requests[0].tools.find((tool: any) => tool.function.name === "write_artifact").function.parameters;
+  expect(JSON.stringify(schema.properties.artifactId)).toContain('"type":"null"');
+});
 it("delivers selected file excerpts and the exact historical revision through real Pi, without loading unrelated files", async () => {
   const directory = await mkdtemp(join(tmpdir(), "referenced-project-"));
   cleaners.push(() => rm(directory, { recursive: true, force: true }));
@@ -519,8 +538,8 @@ it("uses native Pi steering, branches history, compacts and discovers enabled sk
     undefined,
     "GET",
   )) as SessionState;
-  expect(state.skills).toEqual(["review"]);
-  expect(state.prompts).toEqual(["brief"]);
+  expect(state.skills).toEqual(["organize-materials", "use-memory", "correct-memory", "prepare-dataset", "review"]);
+  expect(state.prompts).toEqual(["organize-materials", "use-memory", "correct-memory", "prepare-dataset", "brief"]);
   expect(state.tools.some((t) => t.name === "bash" && t.active)).toBe(true);
   const fork = await f.api("/conversations/" + f.conversation.id + "/fork", {});
   const history = await f.api(

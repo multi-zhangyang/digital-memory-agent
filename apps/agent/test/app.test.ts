@@ -426,7 +426,7 @@ describe("local workspace and boundaries", () => {
       chat: false,
       assets: true,
       memory: true,
-      people: false,
+      people: true,
       training: false,
     });
     const modelResponse = await fetch(f.origin + "/api/models").then(
@@ -556,10 +556,21 @@ describe("real Pi adapter with a local model-protocol test server", () => {
     const first = await f.message(a, "第一段经历");
     expect(first.headers.get("x-vercel-ai-ui-message-stream")).toBe("v1");
     expect(await first.text()).toContain("轮次=1");
-    expect(f.requests[0].tools).toHaveLength(16);
+    expect(f.requests[0].tools).toHaveLength(32);
+    for (const name of ["inspect_memories", "change_memories", "manage_memory_links", "inspect_dataset", "audit_dataset", "review_dataset", "deliver_dataset"])
+      expect(JSON.stringify(f.requests[0].tools)).toContain(`"${name}"`);
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"search_evidence"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"read_evidence"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"inspect_source_people"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"query_events"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"build_dataset"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"process_assets"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"read_job_result"');
+    expect(JSON.stringify(f.requests[0].tools)).toContain('"manage_job"');
     expect(JSON.stringify(f.requests[0].tools)).toContain("search_assets");
     expect(JSON.stringify(f.requests[0].tools)).toContain('"bash"');
-    expect(messageText(f.requests[0].messages[0])).toContain("通用 Agent");
+    expect(messageText(f.requests[0].messages[0])).toContain("你是 digital memory");
+    expect(messageText(f.requests[0].messages[0])).toContain("search_evidence");
     expect(messageText(f.requests[0].messages.at(-1)!)).toBe("第一段经历");
     const b = await f.create();
     expect(await (await f.message(b, "另一个会话")).text()).toContain("轮次=1");

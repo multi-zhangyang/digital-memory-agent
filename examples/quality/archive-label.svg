@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="2000" viewBox="0 0 3200 2000">
+  <rect width="3200" height="2000" fill="#eee"/>
+  <rect x="180" y="220" width="2800" height="1560" rx="30" fill="#a38462" stroke="#554538" stroke-width="10"/>
+  <path d="M180 620h2800" stroke="#554538" stroke-width="10"/>
+  <rect x="2120" y="1340" width="760" height="360" fill="white" stroke="#222" stroke-width="4"/>
+  <g font-family="DejaVu Sans,sans-serif" fill="#111">
+    <text x="280" y="440" font-size="108">ARCHIVE BOX</text>
+    <text x="2180" y="1430" font-size="44">RZ49</text>
+    <text x="2180" y="1510" font-size="34">2026-09-12</text>
+    <text x="2180" y="1590" font-size="34">2 folders</text>
+  </g>
+</svg>

@@ -49,15 +49,21 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { api, assetUrl, formatBytes } from "@/lib/api";
 import { downloadText, type InspectorTarget } from "@/lib/workbench";
 import { Markdown, SourceLinks } from "./run-thread";
+import { MemoryEvidenceList } from "./memory-activity";
+import { VideoSourceViewer } from "./video-source-viewer";
 
 export function AssetPreview({
   asset,
   start = 0,
   end,
+  timestamp,
+  onMemory,
 }: {
   asset: Asset;
   start?: number;
   end?: number;
+  timestamp?: number;
+  onMemory?: (id: string) => void;
 }) {
   start = Number.isSafeInteger(start) && start >= 0 ? start : 0;
   end = Number.isSafeInteger(end) && end! > start ? end : undefined;
@@ -134,12 +140,7 @@ export function AssetPreview({
           onError={() => setError("无法预览，请下载原件")}
         />
       ) : asset.kind === "video" ? (
-        <video
-          controls
-          src={assetUrl(asset.id)}
-          className="w-full rounded-md"
-          onError={() => setError("浏览器不支持此视频格式")}
-        />
+        <VideoSourceViewer key={asset.id + ":" + (timestamp || 0)} assetId={asset.id} name={asset.name} version={asset.sha256} initialTimestamp={timestamp} onMemory={onMemory} />
       ) : (
         <Empty>
           <EmptyHeader>
@@ -340,6 +341,8 @@ export function MemoryEditor({
     attributeKey: "none",
     attributeValue: "",
     uncertainty: "",
+    validFrom: "",
+    validTo: "",
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -393,7 +396,7 @@ export function MemoryEditor({
       setBusy(false);
     }
   }
-  async function resolveConflict() {
+  async function resolveConflict(resolution: "correction" | "change" = "correction") {
     if (!memory) return;
     setBusy(true);
     setError("");
@@ -404,6 +407,7 @@ export function MemoryEditor({
           method: "POST",
           body: JSON.stringify({
             version: memory.version,
+            resolution,
             replace: conflicts.map((entry) => ({
               id: entry.id,
               version: entry.version,
@@ -431,6 +435,16 @@ export function MemoryEditor({
       setBusy(false);
     }
   }
+  async function toggleMemory() {
+    if (!memory) return;
+    setBusy(true); setError("");
+    try {
+      await api(`/memories/${memory.id}/${memory.forgottenAt ? "restore" : "forget"}`, { method: "POST", body: JSON.stringify({ version: memory.version }) });
+      const result = await api<{ memory: MemoryEntry; versions: MemoryEntry[]; conflicts: MemoryEntry[] }>("/memories/" + id);
+      setMemory(result.memory); setVersions(result.versions); setConflicts(result.conflicts); onChanged();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "操作未完成"); }
+    finally { setBusy(false); }
+  }
   return (
     <div className="space-y-5">
       {error && (
@@ -446,6 +460,7 @@ export function MemoryEditor({
               variant="ghost"
               size="icon-sm"
               aria-label="纠正记忆"
+              disabled={busy}
               onClick={() => {
                 setForm({
                   title: memory.title,
@@ -458,6 +473,8 @@ export function MemoryEditor({
                   attributeKey: memory.attribute?.key || "none",
                   attributeValue: memory.attribute?.value || "",
                   uncertainty: memory.uncertainty || "",
+                  validFrom: memory.validity?.from || "",
+                  validTo: memory.validity?.to || "",
                 });
                 setEditing(true);
               }}
@@ -467,7 +484,7 @@ export function MemoryEditor({
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span>
-              {memory.supersededBy
+              {memory.forgottenAt ? "已停用" : memory.supersededBy
                 ? "历史记录"
                 : memory.status === "draft"
                   ? "待核对"
@@ -478,7 +495,7 @@ export function MemoryEditor({
             <span>·</span>
             <span>
               {memory.kind === "statement"
-                ? "你的陈述"
+                ? memory.acceptedBy === "policy" ? "本人陈述 · 自动记录" : "你的陈述"
                 : memory.kind === "observation"
                   ? "资料观察"
                   : "推断"}
@@ -491,6 +508,7 @@ export function MemoryEditor({
             )}
           </div>
           {memory.space === "demo" && <Badge variant="outline">虚构示例</Badge>}
+          {memory.forgottenAt && <Alert><AlertTitle>已停止取用，原文保留</AlertTitle></Alert>}
           {editing ? (
             <div className="space-y-3">
               <Input
@@ -513,9 +531,11 @@ export function MemoryEditor({
                 placeholder="发生时间"
                 value={form.occurredAt}
                 onChange={(event) =>
-                  setForm({ ...form, occurredAt: event.target.value })
+                  setForm({ ...form, occurredAt: event.target.value, ...(form.category === "event" ? { validFrom: event.target.value, validTo: "" } : {}) })
                 }
               />
+              <Field><FieldLabel htmlFor="memory-valid-from">发生或生效日期</FieldLabel><Input id="memory-valid-from" type="date" value={form.validFrom} onChange={(event) => setForm({ ...form, validFrom: event.target.value })} /></Field>
+              <Field><FieldLabel htmlFor="memory-valid-to">有效至</FieldLabel><Input id="memory-valid-to" type="date" value={form.validTo} onChange={(event) => setForm({ ...form, validTo: event.target.value })} /></Field>
               <Input
                 aria-label="纠正原因"
                 placeholder="纠正原因（可选）"
@@ -618,10 +638,11 @@ export function MemoryEditor({
                 <Button
                   disabled={busy || !form.title.trim() || !form.content.trim()}
                   onClick={() => {
-                    const { attributeKey, attributeValue, people, ...patch } =
+                    const { attributeKey, attributeValue, people, validFrom, validTo, ...patch } =
                       form;
                     void update({
                       ...patch,
+                      validity: { from: validFrom || undefined, to: validTo || undefined, precision: validFrom || validTo ? "day" : "unknown" },
                       people: [
                         ...new Set(
                           people
@@ -660,18 +681,9 @@ export function MemoryEditor({
               待核实 · {memory.uncertainty}
             </p>
           )}
-          {memory.sources
-            .filter((source) => source.quote)
-            .map((source, index) => (
-              <blockquote
-                key={index}
-                className="space-y-1 border-l-2 pl-3 text-sm leading-6 text-muted-foreground"
-              >
-                <p className="text-xs">原文 · {source.name}</p>
-                <p className="whitespace-pre-wrap">{source.quote}</p>
-              </blockquote>
-            ))}
-          <SourceLinks sources={memory.sources} onInspect={onInspect} />
+          <MemoryEvidenceList memory={memory} onInspect={onInspect} />
+          {memory.sources.some((source) => source.visual) && !memory.forgottenAt && <p className="text-xs text-muted-foreground">停用范围：{memory.sources.some((source) => source.video) ? "视频原件" : "整张照片"}</p>}
+          {!editing && memory.validity && <p className="text-xs text-muted-foreground">{memory.validity.expression || [memory.validity.from, memory.validity.to].filter(Boolean).join(" — ") || "时间未确定"}</p>}
           {memory.ingestion && (
             <p className="text-xs text-muted-foreground">
               {memory.ingestion.modelId.split("/").slice(1).join("/")} ·
@@ -689,7 +701,7 @@ export function MemoryEditor({
               查看当前记录
             </Button>
           )}
-          {conflicts.length > 0 && !memory.supersededBy && (
+          {conflicts.length > 0 && !memory.supersededBy && !memory.forgottenAt && (
             <Alert>
               <AlertTitle>与已确认信息不同</AlertTitle>
               <AlertDescription className="space-y-3">
@@ -715,6 +727,7 @@ export function MemoryEditor({
                 >
                   确认新记录并替代旧记录
                 </Button>
+                <Button variant="outline" size="sm" disabled={busy || editing || !memory.validity?.from} onClick={() => void resolveConflict("change")}>记录生活变化并保留历史</Button>
               </AlertDescription>
             </Alert>
           )}
@@ -725,6 +738,7 @@ export function MemoryEditor({
           )}
           <div className="flex flex-wrap gap-2">
             {memory.status !== "confirmed" &&
+              !memory.forgottenAt &&
               !memory.supersededBy &&
               conflicts.length === 0 && (
                 <Button
@@ -736,16 +750,17 @@ export function MemoryEditor({
                   确认记住
                 </Button>
               )}
-            {memory.status !== "rejected" && (
+            {memory.status !== "rejected" && !memory.forgottenAt && memory.status !== "confirmed" && (
               <Button
                 size="sm"
                 variant="outline"
                 disabled={busy}
                 onClick={() => void update({ status: "rejected" })}
               >
-                {memory.status === "confirmed" ? "停止使用" : "排除"}
+                排除
               </Button>
             )}
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void toggleMemory()}>{memory.forgottenAt ? "恢复取用" : "停止使用"}</Button>
             <Button
               size="sm"
               variant="ghost"
@@ -880,6 +895,8 @@ export function WorkbenchInspector({
                 asset={asset}
                 start={target.start}
                 end={target.end}
+                timestamp={target.timestamp}
+                onMemory={(id) => { onChanged(); onTarget({ tab: "memories", id }); }}
               />
               {asset.memorySpace !== "demo" && (
                 <Button

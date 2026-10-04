@@ -10,6 +10,14 @@ const readOnly = new Set([
   "read_asset_text",
   "read_artifact",
   "search_memories",
+  "inspect_memories",
+  "inspect_dataset",
+  "deliver_dataset",
+  "search_evidence",
+  "read_evidence",
+  "inspect_source_people",
+  "query_events",
+  "read_job_result",
   "web_search",
   "web_read",
   "tool_search",
@@ -58,6 +66,8 @@ export function permissionExtension(
       const mode = run?.permissionMode || project.permissionMode;
       if (project.disabledTools.includes(event.toolName))
         return { block: true, reason: "此工具已被禁用" };
+      if (run?.memoryEpoch !== undefined && run.memoryEpoch !== store.memories.ledger.epoch)
+        return { block: true, reason: "记忆已更新，禁止使用旧上下文继续操作" };
       if (local.has(event.toolName) || readOnly.has(event.toolName)) return;
       if (!run)
         return {

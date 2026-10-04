@@ -73,7 +73,8 @@ import { ToolOutput } from "@/components/ai-elements/tool";
 import { ToolActivity } from "@/components/tool-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { api, datasetDownloadUrl, videoTime } from "@/lib/api";
+import { RunMemoryActivity, MemoryRecallSources, memoryLabel } from "./memory-activity";
 import { toolUI } from "@/lib/tool-ui";
 import { fileData, isActive, type InspectorTarget } from "@/lib/workbench";
 import type {
@@ -97,8 +98,9 @@ import {
   LoaderCircle,
   RotateCcw,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { AgentApprovals } from "./agent-approvals";
+import { RunJobs } from "./run-jobs";
 
 export function SourceLinks({
   sources,
@@ -118,14 +120,14 @@ export function SourceLinks({
       <SourcesContent>
         {sources.map((source, index) => (
           <Source
-            key={source.assetId + ":" + source.start}
+            key={source.assetId + ":" + source.start + ":" + index}
             href={
               "?panel=assets&item=" +
               source.assetId +
               "&start=" +
               source.start +
               "&end=" +
-              source.end
+              source.end + (source.video ? "&timestamp=" + source.video.timestamp : "")
             }
             onClick={(event) => {
               event.preventDefault();
@@ -134,13 +136,14 @@ export function SourceLinks({
                 id: source.assetId,
                 start: source.start,
                 end: source.end,
+                timestamp: source.video?.timestamp,
               });
             }}
             title={source.name}
           >
             <FileText className="size-3.5 shrink-0" />
             <span className="truncate">
-              [{index + 1}] {source.name}
+              [{index + 1}] {source.name}{source.video ? ` · ${videoTime(source.video.timestamp)}` : ""}
             </span>
             <ArrowUpRight className="size-3" />
           </Source>
@@ -159,11 +162,12 @@ export function Markdown({ content }: { content: string }) {
         a: ({ href, children }) => (
           <a
             href={
-              href?.startsWith("http://") || href?.startsWith("https://")
+              datasetDownloadUrl(href) || (href?.startsWith("http://") || href?.startsWith("https://")
                 ? href
-                : undefined
+                : undefined)
             }
-            target="_blank"
+            download={datasetDownloadUrl(href) ? true : undefined}
+            target={datasetDownloadUrl(href) ? undefined : "_blank"}
             rel="noopener noreferrer"
           >
             {children}
@@ -206,7 +210,7 @@ function RunActivity({ run, tools }: { run: Run; tools: ToolInfo[] }) {
     ? current
       ? tools.find((tool) => tool.name === current.name)?.label || "正在执行"
       : run.status === "waiting"
-        ? "等待确认"
+        ? run.waitingFor === "jobs" ? "等待后台作业" : "等待确认"
         : "正在思考"
     : failed
       ? `${parts.length} 项操作 · 有未完成项`
@@ -329,6 +333,11 @@ export const RunThread = memo(function RunThread({
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
   const [answering, setAnswering] = useState(false);
+  useEffect(() => {
+    if (window.location.hash !== "#run-" + run.id) return;
+    const timer = setTimeout(() => document.getElementById("run-" + run.id)?.scrollIntoView({ block: "center" }), 100);
+    return () => clearTimeout(timer);
+  }, [run.id]);
   const busy = isActive(run);
   const response = run.parts
     .filter((part) => part.type === "text")
@@ -355,13 +364,14 @@ export const RunThread = memo(function RunThread({
   }
   return (
     <section
+      id={"run-" + run.id}
       className="space-y-6"
       data-testid="run-thread"
       data-run-status={run.status}
     >
       <Message from="user" className="ml-auto max-w-[90%]">
         <MessageContent className="rounded-2xl px-4 py-3">
-          <p className="whitespace-pre-wrap leading-7">{run.text}</p>
+          {run.text && <p className="whitespace-pre-wrap leading-7">{run.text}</p>}
           {!!run.fileReferences?.length && (
             <div
               className="mt-2 flex flex-wrap gap-1"
@@ -420,6 +430,7 @@ export const RunThread = memo(function RunThread({
       <Message from="assistant" className="max-w-full gap-3">
         <MessageContent className="w-full gap-4 overflow-visible">
           <RunActivity run={run} tools={tools} />
+          <RunJobs jobs={run.jobs || []} />
           {response && <Markdown content={response} />}
           {run.parts
             .filter((part) => part.type === "notice")
@@ -565,11 +576,7 @@ export const RunThread = memo(function RunThread({
               <BookOpen />
               <span className="truncate">{memory.title}</span>
               <Badge variant="secondary" className="ml-auto">
-                {memory.status === "draft"
-                  ? "待核对"
-                  : memory.status === "confirmed"
-                    ? "已记住"
-                    : "已排除"}
+                {memoryLabel(memory)}
               </Badge>
             </Button>
           ))}
@@ -627,6 +634,8 @@ export const RunThread = memo(function RunThread({
         </MessageContent>
         <MessageToolbar className="mt-1 flex-wrap gap-2">
           <SourceLinks sources={run.sources} onInspect={onInspect} />
+          <MemoryRecallSources run={run} onInspect={onInspect} />
+          <RunMemoryActivity run={run} memories={memories} onInspect={onInspect} onRefresh={onRefresh} />
           <MessageActions className="text-muted-foreground">
             {!busy && (
               <>

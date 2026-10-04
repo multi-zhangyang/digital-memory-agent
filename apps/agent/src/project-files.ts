@@ -13,7 +13,7 @@ import {
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import type { FileChange, FileRevision, ProjectFile } from "@memory/contracts";
-import { UserFacingError } from "./runtime.js";
+import { UserFacingError } from "./harness/runtime.js";
 import { isWithin } from "./local-directories.js";
 
 const excluded = new Set([

@@ -33,7 +33,7 @@ async function complete(page: Page) {
   );
 }
 
-test("project task list searches older tasks and restores and pins an archived task", async ({
+test("all-task list spans work directories, searches older tasks and restores and pins an archived task", async ({
   page,
   request,
 }) => {
@@ -56,6 +56,8 @@ test("project task list searches older tasks and restores and pins an archived t
     });
     if (!i) archivedId = conversation.id;
   }
+  const other = (await (await request.post("/api/conversations", { data: { projectId: "default" } })).json()).conversation;
+  await request.patch("/api/conversations/" + other.id, { data: { title: "另一个工作目录的任务" } });
   await page.goto("/");
   await page.getByLabel("任务指令", { exact: true }).waitFor();
   await page
@@ -72,6 +74,7 @@ test("project task list searches older tasks and restores and pins an archived t
     launcher.getByRole("button", { name: "工作记录 00", exact: true }),
   ).toHaveCount(0);
   await launcher.getByRole("tab", { name: "最近", exact: true }).click();
+  await expect(launcher.getByRole("button", { name: "另一个工作目录的任务", exact: true })).toBeVisible();
   await page.getByLabel("搜索任务", { exact: true }).fill("记录 00");
   await expect(
     launcher.getByRole("button", { name: "工作记录 00", exact: true }),
@@ -85,7 +88,7 @@ test("project task list searches older tasks and restores and pins an archived t
       .getByTestId("workbench-navigation")
       .getByRole("button", { name: "工作记录 00", exact: true }),
   ).toHaveAttribute("data-pinned", "true");
-  await page.getByLabel("搜索任务", { exact: true }).fill("");
+  await page.getByLabel("搜索任务", { exact: true }).fill("工作记录");
   await launcher.getByRole("button", { name: "加载更多任务" }).click();
   await expect(launcher.locator("tbody").getByRole("row")).toHaveCount(26);
   await page.screenshot({

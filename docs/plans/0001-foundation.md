@@ -1,5 +1,7 @@
 # 第一阶段：项目框架与 Pi WebUI
 
+> 历史阶段记录：保留当时的决策、实测和限制。当前产品以 [产品定义](../product.md)、[架构](../architecture.md) 和 [Harness 重构计划](0018-harness-refactor.md) 为准。
+
 ## 目标
 
 建立本地 Git 仓库与可运行的工程框架，完成 WebUI、Pi 接入、会话持久化和原始素材管理。用户后续提供 Agent API；个人模型训练、Colab CLI、人物识别、Embedding 和向量索引不属于本阶段。Embedding 使用 API 还是本地部署保持未决。

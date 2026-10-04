@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "scope": "独立虚构材料，确认状态仅为评测设定；不代表用户经历，不启动训练。",
+  "cases": [
+    {
+      "id": "handoff-direction",
+      "memory": { "title": "钥匙交接", "category": "event", "content": "2025年3月2日下午，林舟把备用钥匙交给陈默，陈默随后保管钥匙。", "occurredAt": "2025-03-02" },
+      "review": ["林舟是交出人，陈默是接收人和保管人", "物品是备用钥匙", "不得把动作方向颠倒"]
+    },
+    {
+      "id": "booking-and-event-dates",
+      "memory": { "title": "河畔演出", "category": "event", "content": "2025年5月1日，周宁订好了河畔剧场的门票；演出是在2025年5月8日，同行者是顾远。", "occurredAt": "2025-05-08" },
+      "review": ["订票日为5月1日，演出日为5月8日", "同行者是顾远", "问题须区分两个日期的含义"]
+    },
+    {
+      "id": "historical-state",
+      "memory": { "title": "工作安排", "category": "profile", "content": "2024年1月到2024年6月，我在青桐设计部工作；2024年7月起调到白鹭研究部。", "occurredAt": "" },
+      "review": ["1月至6月在青桐设计部", "7月起在白鹭研究部", "问工作地点时须明确所问阶段，不用无日期的当前状态替代历史状态"]
+    },
+    {
+      "id": "negative-and-route",
+      "memory": { "title": "出行选择", "category": "event", "content": "我那次没有坐高铁，而是乘坐长途大巴从宁波去绍兴。", "occurredAt": "2025-09-17" },
+      "review": ["交通工具为长途大巴，高铁为否定项", "宁波是出发地，绍兴是目的地", "仅描述这次出行，不能扩大为永久偏好"]
+    },
+    {
+      "id": "unknown-date",
+      "memory": { "title": "周末买书", "category": "event", "content": "某个周末，我和许澄去了石桥书店，在那里买了一本《树木图鉴》。具体日期没有记录。", "occurredAt": "" },
+      "review": ["同行者是许澄，地点是石桥书店", "所买书为《树木图鉴》", "不能补出具体日期，也不能把某个周末扩大为每个周末"]
+    },
+    {
+      "id": "relationship-without-inference",
+      "memory": { "title": "借用相机", "category": "relationship", "content": "顾言是我的同事。一次出游前，我向顾言借了相机，回来后把相机还给了他。", "occurredAt": "" },
+      "review": ["顾言的关系为同事", "我借入相机并在回来后归还", "不推断年龄、亲属关系、确切日期或出游目的地"]
+    }
+  ]
+}

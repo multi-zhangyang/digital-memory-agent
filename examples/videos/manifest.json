@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "purpose": "原始自然视频的隔离集成与候选效果核对；不代表用户经历，原件不进入 Git。",
+  "videos": [
+    {
+      "id": "walk-1",
+      "file": "walk-1.ogv",
+      "source": "https://commons.wikimedia.org/wiki/File:Deb_Haaland_and_Isleta_Pueblo_Chief_Judge_Verna_Teller_walking_at_the_Capitol.ogv",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Deb_Haaland_and_Isleta_Pueblo_Chief_Judge_Verna_Teller_walking_at_the_Capitol.ogv",
+      "author": "Deb Haaland",
+      "license": "Public domain",
+      "credit": "https://twitter.com/RepDebHaaland/status/1194661769173749761",
+      "bytes": 3323346,
+      "sha256": "0a5ce037119a53adbfd9cc282a0832d159335eb138576cea1b0589cd1ca0e630",
+      "reference": {
+        "duration": 5.826757369614512,
+        "width": 720,
+        "height": 1280,
+        "identity": "仅供人工核对，编码器和 Agent 不接收来源网页姓名；新人物保持未知。"
+      }
+    },
+    {
+      "id": "walk-2",
+      "file": "walk-2.ogv",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamala_Harris_and_Joe_Biden_walking_at_the_White_House_in_slow_motion.ogv",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/7/75/Kamala_Harris_and_Joe_Biden_walking_at_the_White_House_in_slow_motion.ogv",
+      "author": "White House",
+      "license": "Public domain",
+      "credit": "https://twitter.com/POTUS/status/1354602630899781634",
+      "bytes": 918727,
+      "sha256": "4ab21917c5680f4d2206eb05ddab5be2f447a74007194e60f22d7c842aed3921",
+      "reference": {
+        "duration": 4.838166666666666,
+        "width": 720,
+        "height": 720,
+        "identity": "仅供人工核对，编码器和 Agent 不接收来源网页姓名；新人物保持未知。"
+      }
+    }
+  ]
+}

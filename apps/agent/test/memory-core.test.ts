@@ -13,7 +13,7 @@ import type {
 import { buildApp } from "../src/app.js";
 import { readConfig } from "../src/config.js";
 import { Store } from "../src/store.js";
-import type { AgentRuntime } from "../src/runtime.js";
+import type { MemoryProcessors } from "../src/memory-processors.js";
 import type {
   ExtractedMemory,
   ExtractionInput,
@@ -138,6 +138,8 @@ async function fixture(
     MEMORY_OPENAI_MODEL: "test-memory",
   });
   let store = new Store(dataDir);
+  // Explicit task/import tests isolate automatic intake, which has its own coverage.
+  store.memories.ledger.setSettings({ intake: "manual" });
   let app = buildApp(config, { store });
   await app.ready();
   cleanup.push(() => app.close());
@@ -189,10 +191,10 @@ async function fixture(
         () => getJob(id),
         (job) => ["completed", "failed", "cancelled"].includes(job.status),
       ),
-    async restart(runtime?: AgentRuntime) {
+    async restart(processors?: MemoryProcessors) {
       await app.close();
       store = new Store(dataDir);
-      app = buildApp(config, { store, runtime });
+      app = buildApp(config, { store, processors });
       await app.ready();
     },
   };
@@ -316,8 +318,8 @@ describe("memory core", () => {
       (value) => ["completed", "failed"].includes(value.status),
     );
     const latestRequest = JSON.stringify(f.requests.at(-1));
-    expect(latestRequest).toContain("居住在南京");
-    expect(latestRequest).not.toContain("居住在苏州");
+    expect(latestRequest).toContain("我住在南京。");
+    expect(latestRequest).not.toContain("我住在苏州。");
     expect(latestRequest.match(/本次任务上下文/g)).toHaveLength(1);
   });
 
@@ -535,11 +537,7 @@ describe("memory core", () => {
   it("resumes only unfinished work after shutdown and respects cancellation and immutable evidence", async () => {
     const f = await fixture();
     let calls = 0;
-    const blocking: AgentRuntime = {
-      history: async () => [],
-      prompt: async () => {},
-      cancel: async () => {},
-      close: async () => {},
+    const blocking: MemoryProcessors = {
       extractMemories: async (input, signal) => {
         calls++;
         if (calls > 1)

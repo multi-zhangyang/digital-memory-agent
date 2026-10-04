@@ -18,6 +18,7 @@ export type InspectorTarget = {
   id?: string;
   start?: number;
   end?: number;
+  timestamp?: number;
 };
 export interface TaskDraft {
   text: string;
@@ -26,6 +27,7 @@ export interface TaskDraft {
   modelId: string;
   thinkingLevel: ThinkingLevel;
   useMemory: boolean;
+  captureMemory?: boolean;
   scope: "selected" | "library";
   permissionMode?: "read" | "ask" | "auto";
 }

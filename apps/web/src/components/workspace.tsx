@@ -11,12 +11,6 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
 import {
   Queue,
   QueueItem,
@@ -34,15 +28,6 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandShortcut,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -94,29 +79,26 @@ import { loadDrafts, readDraft, writeDraft } from "@/hooks/use-draft";
 import { useLatestCallback } from "@/hooks/use-latest-callback";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTask } from "@/hooks/use-task";
+import { useWorkbenchData } from "@/hooks/use-workbench-data";
 import { api } from "@/lib/api";
-import { toolUI } from "@/lib/tool-ui";
 import {
   emptyDraft,
   type InspectorTarget,
   type TaskDraft,
-  type WorkbenchSnapshot,
 } from "@/lib/workbench";
 import type {
   Conversation,
-  HarnessSettings,
-  ModelConfiguration,
   Project,
   ProjectFileReference,
   Run,
   RunInput,
-  ToolInfo,
 } from "@memory/contracts";
 import {
   Archive,
   Brain,
   Clock3,
   Download,
+  Database,
   FileText,
   FolderOpen,
   GitBranch,
@@ -146,7 +128,6 @@ import {
   type CSSProperties,
 } from "react";
 import { TaskLauncher } from "./task-launcher";
-import { ToolActivity } from "./tool-activity";
 import { WorkbenchComposer } from "./workbench-composer";
 import {
   WorkbenchNavigation,
@@ -175,7 +156,8 @@ const ArtifactLibrary = dynamic(() =>
 const RunThread = dynamic(() =>
   import("./run-thread").then((m) => m.RunThread),
 );
-const Markdown = dynamic(() => import("./run-thread").then((m) => m.Markdown));
+const LegacyMessages = dynamic(() => import("./legacy-messages").then((m) => m.LegacyMessages));
+const WorkbenchCommandPalette = dynamic(() => import("./workbench-command-palette").then((m) => m.WorkbenchCommandPalette));
 const AssetLibrary = dynamic(
   () => import("./asset-library").then((m) => m.AssetLibrary),
   { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
@@ -184,6 +166,8 @@ const MemoryLibrary = dynamic(
   () => import("./memory-library").then((m) => m.MemoryLibrary),
   { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
 );
+const MemoryDatasetsPage = dynamic(() => import("./memory-datasets").then((module) => module.MemoryDatasetsPage));
+const ProcessingCenter = dynamic(() => import("./processing-center").then((module) => module.ProcessingCenter));
 const SettingsPanel = dynamic(
   () => import("./settings-panel").then((m) => m.SettingsPanel),
   { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
@@ -203,10 +187,12 @@ const initialNavigation: Navigation = {
   collection: null,
 };
 const navItems = [
-  { id: "chat" as const, label: "Agent", icon: TerminalSquare },
+  { id: "chat" as const, label: "新任务", icon: TerminalSquare },
   { id: "tasks" as const, label: "任务", icon: MessageSquare },
   { id: "assets" as const, label: "资料库", icon: FolderOpen },
   { id: "memory" as const, label: "个人记忆", icon: Brain },
+  { id: "datasets" as const, label: "数据集", icon: Database },
+  { id: "processing" as const, label: "处理与核对", icon: Clock3 },
   { id: "artifacts" as const, label: "整理结果", icon: FileText },
 ];
 
@@ -232,17 +218,7 @@ function WorkspaceContent() {
   const [nav, setNav] = useState<Navigation>(initialNavigation);
   const navRef = useRef(nav);
   navRef.current = nav;
-  const [snapshot, setSnapshot] = useState<WorkbenchSnapshot>({
-    conversations: [],
-    assets: [],
-    collections: [],
-    artifacts: [],
-    memories: [],
-  });
-  const [configuration, setConfiguration] = useState<ModelConfiguration | null>(
-    null,
-  );
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { snapshot, setSnapshot, configuration, projects, setProjects, harness, tools, ready, error, setError, refresh, refreshSnapshot } = useWorkbenchData();
   const [projectId, setProjectId] = useState("default");
   const [projectOpen, setProjectOpen] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
@@ -257,19 +233,14 @@ function WorkspaceContent() {
   const [projectTab, setProjectTab] = useState("files");
   const [reviewRunId, setReviewRunId] = useState("latest");
   const [reviewPath, setReviewPath] = useState<string | null>(null);
-  const [harness, setHarness] = useState<HarnessSettings | null>(null);
-  const [tools, setTools] = useState<ToolInfo[]>([]);
-  const [ready, setReady] = useState(false);
   const [historyLimit, setHistoryLimit] = useState(20);
   useEffect(() => {
     setHistoryLimit(20);
     setReviewRunId("latest");
     setReviewPath(null);
   }, [nav.task]);
-  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [taskFilter, setTaskFilter] = useState("recent");
   const [dialog, setDialog] = useState<{
@@ -304,45 +275,17 @@ function WorkspaceContent() {
           params.set("start", String(next.target.start));
         if (next.target.end !== undefined)
           params.set("end", String(next.target.end));
+        if (next.target.timestamp !== undefined)
+          params.set("timestamp", String(next.target.timestamp));
       }
       window.history.pushState({}, "", "/" + (params.size ? "?" + params : ""));
     },
     [setOpenMobile],
   );
-  const refresh = useCallback(async () => {
-    try {
-      const [workspace, models, catalog, projectList, harnessSettings] =
-        await Promise.all([
-          api<WorkbenchSnapshot>("/workspace"),
-          api<ModelConfiguration>("/models"),
-          api<{ tools: ToolInfo[] }>("/tools"),
-          api<{ projects: Project[] }>("/projects"),
-          api<HarnessSettings>("/harness"),
-        ]);
-      setSnapshot(workspace);
-      setConfiguration(models);
-      setTools(catalog.tools);
-      setProjects(projectList.projects);
-      setHarness(harnessSettings);
-      setError("");
-      setReady(true);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "读取失败");
-    }
-  }, []);
-  const snapshotRequest = useRef<Promise<void> | null>(null);
-  const refreshSnapshot = useCallback(() => {
-    if (snapshotRequest.current) return snapshotRequest.current;
-    const request = api<WorkbenchSnapshot>("/workspace")
-      .then(setSnapshot)
-      .catch((e) => setError(e.message))
-      .finally(() => {
-        snapshotRequest.current = null;
-      });
-    snapshotRequest.current = request;
-    return request;
-  }, []);
   const task = useTask(nav.task, refreshSnapshot);
+  const focusedRun = mounted ? new URLSearchParams(window.location.search).get("run") : null;
+  const focusedRunIndex = task.detail?.runs.findIndex((run) => run.id === focusedRun) ?? -1;
+  const visibleRunCount = Math.max(historyLimit, focusedRunIndex >= 0 ? (task.detail?.runs.length || 0) - focusedRunIndex : 0);
   const shortcut = useLatestCallback((event: KeyboardEvent) => {
     if (!(event.ctrlKey || event.metaKey) || event.isComposing || event.altKey)
       return;
@@ -351,7 +294,6 @@ function WorkspaceContent() {
       event.preventDefault();
       setFilePickerOpen(false);
       setSearchOpen((open) => !open);
-      setSearchQuery("");
     } else if (key === "p") {
       event.preventDefault();
       setSearchOpen(false);
@@ -396,6 +338,7 @@ function WorkspaceContent() {
                 ? Number(params.get("start"))
                 : undefined,
               end: params.has("end") ? Number(params.get("end")) : undefined,
+              timestamp: params.has("timestamp") ? Number(params.get("timestamp")) : undefined,
             }
           : null,
       });
@@ -508,9 +451,10 @@ function WorkspaceContent() {
       fileReferences: draft.fileReferences,
       scope: draft.scope,
       useMemory: draft.useMemory,
+      captureMemory: draft.captureMemory,
       permissionMode: draft.permissionMode || project?.permissionMode,
     };
-    if (!payload.text || !payload.modelId) return;
+    if ((!payload.text && !payload.assetIds?.length) || !payload.modelId) return;
     setSubmitting(true);
     setError("");
     try {
@@ -729,6 +673,7 @@ function WorkspaceContent() {
         scope: run.scope,
         thinkingLevel: run.thinkingLevel,
         useMemory: run.useMemory,
+        captureMemory: run.captureMemory,
         permissionMode: run.permissionMode,
         retryOf: run.id,
       }),
@@ -998,6 +943,8 @@ function WorkspaceContent() {
         onChanged={refresh}
         onUse={useAssets}
         onPreview={(asset) => inspect({ tab: "assets", id: asset.id })}
+        onMemory={(id) => inspect({ tab: "memories", id })}
+        onProcessing={() => navigate({ view: "processing", target: null })}
         onCollection={(assetIds) => {
           setDialog({ type: "collection", assetIds });
           setDialogTitle("");
@@ -1012,6 +959,11 @@ function WorkspaceContent() {
         onChanged={refresh}
         onClearInspector={() => navigate({ target: null })}
       />
+    ) : nav.view === "datasets" ? (
+      <MemoryDatasetsPage models={configuration?.models || []} onOpen={(id) => inspect({ tab: "memories", id })} />
+    ) : nav.view === "processing" ? (
+      <ProcessingCenter onMemory={(id) => inspect({ tab: "memories", id })} onAsset={(id) => inspect({ tab: "assets", id })}
+        onDatasets={() => navigate({ view: "datasets", target: null })} onSettings={() => navigate({ view: "settings", target: null })} />
     ) : nav.view === "artifacts" ? (
       <ArtifactLibrary
         artifacts={snapshot.artifacts}
@@ -1027,6 +979,13 @@ function WorkspaceContent() {
         onFilter={setTaskFilter}
         onTask={(id) => navigate({ view: "chat", task: id, target: null })}
         onNew={() => navigate({ view: "chat", task: null, target: null })}
+        artifacts={snapshot.artifacts}
+        onArtifact={(id) => inspect({ tab: "artifacts", id })}
+        onPrompt={(text) => {
+          const key = "new-" + (project?.id || "default");
+          writeDraft(key, { ...readDraft(key, fallbackDraft), text });
+          navigate({ view: "chat", task: null, target: null });
+        }}
         menu={(item) => taskMenu(item, "管理任务")}
       />
     ) : nav.task ? (
@@ -1050,38 +1009,10 @@ function WorkspaceContent() {
                     加载更早记录
                   </Button>
                 )}
-                {task.detail.legacyMessages
-                  .slice(-historyLimit)
-                  .map((message) => (
-                    <Message
-                      key={message.id}
-                      from={message.role === "user" ? "user" : "assistant"}
-                    >
-                      <MessageContent>
-                        {message.parts?.length ? (
-                          message.parts.map((part, index) =>
-                            part.type === "tool" ? (
-                              <ToolActivity key={index} part={toolUI(part)} />
-                            ) : part.type === "reasoning" ? (
-                              <Reasoning key={index} defaultOpen={false}>
-                                <ReasoningTrigger
-                                  getThinkingMessage={() => "思考过程"}
-                                />
-                                <ReasoningContent>{part.text}</ReasoningContent>
-                              </Reasoning>
-                            ) : (
-                              <Markdown key={index} content={part.text} />
-                            ),
-                          )
-                        ) : (
-                          <Markdown content={message.text} />
-                        )}
-                      </MessageContent>
-                    </Message>
-                  ))}
+                <LegacyMessages messages={task.detail.legacyMessages.slice(-historyLimit)} />
                 {task.detail.runs
                   .filter((run) => run.status !== "queued")
-                  .slice(-historyLimit)
+                  .slice(-visibleRunCount)
                   .map((run) => (
                     <RunThread
                       key={run.id}
@@ -1211,7 +1142,6 @@ function WorkspaceContent() {
       navigate({ view: "assets", collection: id, target: null }),
     ),
     onSearch: useLatestCallback(() => {
-      setSearchQuery("");
       setSearchOpen(true);
     }),
     onShortcuts: useLatestCallback(() => setShortcutsOpen(true)),
@@ -1221,12 +1151,7 @@ function WorkspaceContent() {
     }),
     menu: useLatestCallback((item: Conversation) => taskMenu(item, "管理任务")),
   };
-  const matchesSearch = (value: string) =>
-    searchQuery
-      .toLocaleLowerCase()
-      .trim()
-      .split(/\s+/)
-      .every((word) => value.toLocaleLowerCase().includes(word));
+
   return (
     <>
       <WorkbenchNavigation
@@ -1290,7 +1215,7 @@ function WorkspaceContent() {
                 className="mr-2 hidden items-center gap-2 text-xs text-muted-foreground sm:flex"
               >
                 <LoaderCircle className="size-3 animate-spin" />
-                {running.status === "waiting" ? "等待确认" : "进行中"}
+                {running.status === "waiting" ? running.waitingFor === "jobs" ? "等待后台作业" : "等待确认" : "进行中"}
               </span>
             )}
             {task.connection === "reconnecting" && (
@@ -1392,7 +1317,6 @@ function WorkspaceContent() {
           </Alert>
         )}
         <div className="min-h-0 flex-1">
-          {!mobile ? (
             <ResizablePanelGroup orientation="horizontal">
               <ResizablePanel
                 id="main"
@@ -1408,7 +1332,7 @@ function WorkspaceContent() {
               >
                 {main}
               </ResizablePanel>
-              {inspector && (
+              {!mobile && inspector && (
                 <>
                   <ResizableHandle />
                   <ResizablePanel
@@ -1421,9 +1345,6 @@ function WorkspaceContent() {
                 </>
               )}
             </ResizablePanelGroup>
-          ) : (
-            <main className="flex h-full min-h-0 flex-col">{main}</main>
-          )}
         </div>
       </SidebarInset>
       <Sheet
@@ -1447,158 +1368,18 @@ function WorkspaceContent() {
           {mobile && inspector}
         </SheetContent>
       </Sheet>
-      {searchOpen && (
-        <CommandDialog
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          title="搜索工作空间"
-          description="命令、任务、项目文件与资料"
-        >
-          <CommandInput
-            placeholder="搜索任务、资料、结果、记忆…"
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-          />
-          <CommandList>
-            <CommandEmpty>没有匹配结果</CommandEmpty>
-            <CommandGroup heading="操作">
-              {[
-                {
-                  name: "新任务",
-                  icon: SquarePen,
-                  keys: "⇧ ⌘ O",
-                  action: () => navigationActions.onTask(null),
-                },
-                {
-                  name: "快速打开文件",
-                  icon: Search,
-                  keys: "⌘ P",
-                  action: () => setFilePickerOpen(true),
-                },
-                {
-                  name: "打开文件夹",
-                  icon: FolderOpen,
-                  keys: "⌘ O",
-                  action: openProjectFolder,
-                },
-                {
-                  name: "审阅文件改动",
-                  icon: GitCompareArrows,
-                  keys: "⇧ ⌘ G",
-                  action: () => openFiles(),
-                },
-                {
-                  name: "终端输出",
-                  icon: TerminalSquare,
-                  keys: "⌘ J",
-                  action: () => {
-                    navigate({ view: "chat", target: null });
-                    setProjectTab("terminal");
-                    setProjectOpen(true);
-                  },
-                },
-                {
-                  name: "模型与 Agent 设置",
-                  icon: Settings2,
-                  keys: "⌘ ,",
-                  action: () => navigate({ view: "settings", target: null }),
-                },
-              ].map(({ name, icon: Icon, keys, action }) => (
-                <CommandItem
-                  key={name}
-                  value={name}
-                  onSelect={() => {
-                    setSearchOpen(false);
-                    action();
-                  }}
-                >
-                  <Icon />
-                  <span>{name}</span>
-                  <CommandShortcut>
-                    {keys.replaceAll("⌘", "Ctrl/⌘")}
-                  </CommandShortcut>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            <CommandGroup heading="任务">
-              {snapshot.conversations
-                .filter((item) => matchesSearch("任务 " + item.title))
-                .slice(0, 40)
-                .map((item) => (
-                  <CommandItem
-                    key={item.id}
-                    value={"任务 " + item.title + " " + item.id}
-                    onSelect={() => {
-                      navigate({ view: "chat", task: item.id, target: null });
-                      setSearchOpen(false);
-                    }}
-                  >
-                    <MessageSquare />
-                    {item.title}
-                  </CommandItem>
-                ))}
-            </CommandGroup>
-            <CommandGroup heading="资料">
-              {snapshot.assets
-                .filter((item) => matchesSearch("资料 " + item.name))
-                .slice(0, 30)
-                .map((asset) => (
-                  <CommandItem
-                    key={asset.id}
-                    value={"资料 " + asset.name + " " + asset.id}
-                    onSelect={() => {
-                      inspect({ tab: "assets", id: asset.id });
-                      setSearchOpen(false);
-                    }}
-                  >
-                    <FileText />
-                    {asset.name}
-                  </CommandItem>
-                ))}
-            </CommandGroup>
-            <CommandGroup heading="结果">
-              {snapshot.artifacts
-                .filter((item) => matchesSearch("结果 " + item.title))
-                .slice(0, 30)
-                .map((item) => (
-                  <CommandItem
-                    key={item.id}
-                    value={"结果 " + item.title + " " + item.id}
-                    onSelect={() => {
-                      inspect({ tab: "artifacts", id: item.id });
-                      setSearchOpen(false);
-                    }}
-                  >
-                    <FileText />
-                    {item.title}
-                  </CommandItem>
-                ))}
-            </CommandGroup>
-            <CommandGroup heading="记忆">
-              {snapshot.memories
-                .filter(
-                  (item) =>
-                    item.status !== "rejected" &&
-                    matchesSearch("记忆 " + item.title + " " + item.content),
-                )
-                .slice(0, 30)
-                .map((item) => (
-                  <CommandItem
-                    key={item.id}
-                    value={"记忆 " + item.title + " " + item.content}
-                    onSelect={() => {
-                      inspect({ tab: "memories", id: item.id });
-                      setSearchOpen(false);
-                    }}
-                  >
-                    <Brain />
-                    {item.title}
-                  </CommandItem>
-                ))}
-            </CommandGroup>
-          </CommandList>
-        </CommandDialog>
-      )}
+      {searchOpen && <WorkbenchCommandPalette snapshot={snapshot} onClose={() => setSearchOpen(false)}
+        onTask={(id) => navigate({ view: "chat", task: id, target: null })} onInspect={inspect}
+        actions={[
+          { name: "新任务", icon: SquarePen, keys: "⇧ ⌘ O", action: () => navigationActions.onTask(null) },
+          { name: "快速打开文件", icon: Search, keys: "⌘ P", action: () => setFilePickerOpen(true) },
+          { name: "打开文件夹", icon: FolderOpen, keys: "⌘ O", action: openProjectFolder },
+          { name: "审阅文件改动", icon: GitCompareArrows, keys: "⇧ ⌘ G", action: () => openFiles() },
+          { name: "终端输出", icon: TerminalSquare, keys: "⌘ J", action: () => { navigate({ view: "chat", target: null }); setProjectTab("terminal"); setProjectOpen(true); } },
+          { name: "处理与核对", icon: Clock3, keys: "", action: () => navigate({ view: "processing", target: null }) },
+          { name: "数据集", icon: Database, keys: "", action: () => navigate({ view: "datasets", target: null }) },
+          { name: "模型与 Agent 设置", icon: Settings2, keys: "⌘ ,", action: () => navigate({ view: "settings", target: null }) },
+        ]} />}
       {filePickerOpen && project && (
         <ProjectFilePicker
           key={project.id}

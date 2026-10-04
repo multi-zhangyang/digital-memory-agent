@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const env = {
+  MEMORY_NEXT_DIST_DIR: process.env.MEMORY_NEXT_DIST_DIR || ".next-e2e",
   AGENT_PORT: "4311",
   AGENT_ORIGIN: "http://127.0.0.1:4311",
   MEMORY_ALLOWED_ORIGINS: "http://127.0.0.1:3001,http://localhost:3001",

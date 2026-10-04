@@ -3,7 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "build": "tsc --noEmit", "typecheck": "tsc --noEmit" },
-  "devDependencies": { "typescript": "^5.9.3" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./models": "./src/models.ts",
+    "./assets": "./src/assets.ts",
+    "./workspace": "./src/workspace.ts",
+    "./system": "./src/system.ts",
+    "./datasets": "./src/datasets.ts",
+    "./harness": "./src/harness.ts",
+    "./memory": "./src/memory.ts",
+    "./evidence": "./src/evidence.ts",
+    "./capabilities": "./src/capabilities.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }

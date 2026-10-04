@@ -1,5 +1,7 @@
 # 项目、文件上下文与审阅工作流
 
+> 历史阶段记录：保留当时的决策、实测和限制。当前产品以 [产品定义](../product.md)、[架构](../architecture.md) 和 [Harness 重构计划](0018-harness-refactor.md) 为准。
+
 ## 目标
 
 把通用 Agent 工作台的项目切换、输入、文件浏览和变更审阅连接起来。沿用黑白主题、shadcn/ui、AI Elements 和真实 Pi 会话，不增加无实现的入口。

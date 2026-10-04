@@ -1,10 +1,20 @@
 // Local model-protocol fixture. Never used by the application outside Playwright.
 import { createServer } from "node:http";
 import { createChat } from "@shadcn/helpers/ai-sdk";
+import { randomUUID } from "node:crypto";
 const extractionAttempts = new Map();
+let backgroundReleased = false;
+const backgroundWaiters = new Set();
 const server = createServer(async (request, response) => {
   if (request.url === "/health") {
     response.end("ok");
+    return;
+  }
+  if (request.url === "/test/release-background") {
+    backgroundReleased = true;
+    for (const release of backgroundWaiters) release();
+    backgroundWaiters.clear();
+    response.end("released");
     return;
   }
   const buffers = [];
@@ -20,6 +30,85 @@ const server = createServer(async (request, response) => {
       : (messages[userIndex]?.content || [])
           .map((part) => part.text || "")
           .join("");
+  if (body.tools?.some((tool) => tool.function?.name === "submit_dataset_review")) {
+    const input = JSON.parse(prompt);
+    if (!input.memory.content.includes("林舟把备用钥匙交给陈默")) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Expected the isolated audit fixture" } })); return;
+    }
+    const decisions = input.samples.flatMap((sample, index) => !sample.reviewable ? [] : [{
+      index, action: "approve", question: null, answerQuote: null, trainingIndex: null,
+      reason: "测试正文明确接收人为陈默，成对问答均询问接收与保管人；物品题询问备用钥匙。",
+    }]);
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    if (response.destroyed) return;
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "audit-browser-fixture", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 240, completion_tokens: 140, total_tokens: 380 } }) + "\n\n";
+    response.end(frame({ tool_calls: [{ index: 0, id: "audit-browser", type: "function", function: { name: "submit_dataset_review", arguments: JSON.stringify({ decisions }) } }] }, null)
+      + frame({}, "tool_calls") + "data: [DONE]\n\n"); return;
+  }
+  if (body.tools?.some((tool) => tool.function?.name === "submit_dataset_questions")) {
+    const { memory } = JSON.parse(prompt);
+    if (!memory.content.includes("林舟把备用钥匙交给陈默")) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Expected the isolated dataset fixture" } }));
+      return;
+    }
+    const questions = {
+      training: [{ question: "林舟把备用钥匙交给了谁？", answerQuote: "陈默" },
+        { question: "林舟交给陈默的是什么？", answerQuote: "备用钥匙" }],
+      evaluation: [{ question: "谁收到了林舟交出的备用钥匙？", trainingIndex: 0 }],
+    };
+    if (body.model === "agent-first-browser-test") {
+      questions.training[0] = { question: "谁把备用钥匙交给陈默？", answerQuote: "她" };
+      questions.evaluation[0] = { question: "陈默从谁手中收到备用钥匙？", trainingIndex: 0 };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (response.destroyed) return;
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "dataset-browser-fixture", object: "chat.completion.chunk", created: 1,
+      model: "browser-test", choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 120, total_tokens: 320 } }) + "\n\n";
+    response.end(frame({ tool_calls: [{ index: 0, id: "dataset-browser", type: "function", function: { name: "submit_dataset_questions", arguments: JSON.stringify(questions) } }] }, null)
+      + frame({}, "tool_calls") + "data: [DONE]\n\n");
+    return;
+  }
+  if (body.tools?.some((tool) => tool.function?.name === "extract_photo_memories")) {
+    const parts = messages[userIndex]?.content;
+    if (!Array.isArray(parts) || parts.filter((part) => part.type === "image_url").length !== 1) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Expected exactly one selected image" } }));
+      return;
+    }
+    // Deliberate fixture output, not visual recognition. Browser assertions exercise the product flow.
+    const background = body.model === "background-browser-test";
+    const entries = [{ title: background ? "后台图片的独立测试观察" : "照片中的测试色块", content: background ? "后台工具生成的独立测试观察。" : "测试图片中有一个蓝色方块。", kind: "observation", uncertainty: "",
+      region: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 }, visibleText: "TEST FIXTURE" }];
+    if (body.model === "background-browser-test" && !backgroundReleased)
+      await new Promise((resolve) => backgroundWaiters.add(resolve));
+    else await new Promise((resolve) => setTimeout(resolve, 500));
+    if (response.destroyed) return;
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "photo-browser-fixture", object: "chat.completion.chunk", created: 1, model: "browser-test", choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } }) + "\n\n";
+    response.end(frame({ tool_calls: [{ index: 0, id: "photo-browser", type: "function", function: { name: "extract_photo_memories", arguments: JSON.stringify({ entries }) } }] }, null) + frame({}, "tool_calls") + "data: [DONE]\n\n");
+    return;
+  }
+  if (body.tools?.some((tool) => tool.function?.name === "capture_memories")) {
+    const input = JSON.parse(prompt);
+    const text = input.text;
+    const entries = text.startsWith("我每周六都会去城南图书馆读书") ? [{
+      title: "周六读书习惯", content: "我每周六都会去城南图书馆读书。", quote: text,
+      category: "fact", kind: "statement", personal: true, direct: true, identityClaim: false,
+      people: [], place: "城南图书馆", uncertainty: "", timeExpression: "", attribute: null,
+      duplicateOf: input.existing.find((entry) => entry.content === "我每周六都会去城南图书馆读书。")?.id || null, conflictIds: [],
+    }] : [];
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    if (response.destroyed) return;
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "capture-browser-fixture", object: "chat.completion.chunk", created: 1, model: "browser-test", choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 220, completion_tokens: 100, total_tokens: 320 } }) + "\n\n";
+    response.end(frame({ tool_calls: [{ index: 0, id: "capture-browser", type: "function", function: { name: "capture_memories", arguments: JSON.stringify({ entries }) } }] }, null) + frame({}, "tool_calls") + "data: [DONE]\n\n");
+    return;
+  }
   if (body.tools?.some((tool) => tool.function?.name === "extract_memories")) {
     const input = JSON.parse(prompt);
     const text = input.text;
@@ -37,7 +126,8 @@ const server = createServer(async (request, response) => {
       attribute: null,
     };
     let entries;
-    if (text.includes("住在苏州"))
+    if (body.model === "agent-first-browser-test") entries = [{ ...base, title: "交接钥匙", content: text, category: "event" }];
+    else if (text.includes("住在苏州"))
       entries = [
         {
           ...base,
@@ -124,6 +214,81 @@ const server = createServer(async (request, response) => {
     );
     return;
   }
+  if (body.model === "media-review-browser-test" || body.model === "video-browser-test") {
+    // Deliberate integration policy; the generated pixel fixture is not a perception evaluation.
+    const asText = (message) => typeof message.content === "string" ? message.content : (message.content || []).map((part) => part.text || "").join("");
+    const decode = (message) => { try { const text = asText(message); return JSON.parse(text.slice(text.indexOf("{"))); } catch { return undefined; } };
+    const data = messages.map(decode).filter(Boolean);
+    const context = data.findLast((value) => value.goal) || {};
+    const reads = data.filter((value) => value.verification === "asset-hash" && value.source?.view);
+    const video = body.model === "video-browser-test";
+    const selected = context.assets?.find((asset) => asset.kind === (video ? "video" : "image"));
+    const artifacts = data.some((value) => value.artifactId);
+    const delta = video && reads.length >= 2 && !artifacts ? { tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: "write_artifact", arguments: JSON.stringify({
+      title: "视频时间整理", content: "已读取视频 0 秒的整幅画面与 2.25 秒的中央局部，画面时间和原件来源随结果保留。", sourceAssetIds: [selected?.id],
+    }) } }] }
+      : reads.length >= 2 ? { content: video ? "已保存带视频时间的整理结果。" : "已读取整图和中央局部，读取结果保留在本次会话中。" }
+      : { tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: "read_evidence", arguments: JSON.stringify({
+        id: "asset:" + selected?.id, ...(video ? { timestamp: reads.length ? 2.2 : 0 } : {}), ...(reads.length ? { region: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 } } : {}),
+      }) } }] };
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (value, finish_reason) => "data: " + JSON.stringify({ id: "media-review-browser", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta: value, finish_reason }], usage: { prompt_tokens: 250, completion_tokens: 100, total_tokens: 350 } }) + "\n\n";
+    response.end(frame(delta, null) + frame({}, delta.tool_calls ? "tool_calls" : "stop") + "data: [DONE]\n\n");
+    return;
+  }
+  if (body.model === "agent-first-browser-test") {
+    // A deterministic conversation policy exercises real Pi tools. It is never a quality evaluator.
+    const asText = (message) => typeof message.content === "string" ? message.content : (message.content || []).map((part) => part.text || "").join("");
+    const decode = (message) => { try { const text = asText(message); return JSON.parse(text.slice(text.indexOf("{"))); } catch { return undefined; } };
+    const data = messages.map(decode).filter(Boolean);
+    const context = data.findLast((value) => value.goal) || {};
+    const goal = context.goal || prompt;
+    const names = new Map(messages.flatMap((message) => (message.tool_calls || []).map((call) => [call.id, call.function.name])));
+    const results = messages.filter((message) => message.role === "tool").map((message) => ({ name: names.get(message.tool_call_id), result: decode(message) }));
+    const latest = (name) => results.findLast((value) => value.name === name)?.result;
+    const invoke = (name, args) => ({ tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name, arguments: JSON.stringify(args) } }] });
+    const notification = data.findLast((value) => value.jobs?.some((job) => job.result));
+    let delta;
+    if (goal.includes("确认这批文字记录")) {
+      const dataset = notification?.jobs?.find((job) => job.kind === "memory-dataset")?.result?.dataset;
+      const delivered = latest("deliver_dataset");
+      if (delivered) delta = { content: `已核验交付训练文件。\n\n${delivered.files.map((file) => `[${file.name}](${file.href})`).join(" · ")}\n\n样本由 Agent 核对；未运行模型训练。` };
+      else if (dataset?.sampleCounts?.review === 0) delta = invoke("deliver_dataset", { datasetId: dataset.id });
+      else if (dataset) {
+        const inspected = latest("inspect_dataset");
+        if (!inspected) delta = invoke("inspect_dataset", { datasetId: dataset.id, after: null, revision: null, limit: null });
+        else if (!latest("review_dataset")) delta = invoke("review_dataset", { datasetId: dataset.id, reason: "对照冻结正文核对人物与动作，修订只有代词的答案", samples: inspected.samples.map((sample) => ({
+          ref: sample.ref, action: sample.answer === "她" ? "revise" : "approve", question: null, answer: sample.answer === "她" ? "林舟" : null,
+        })) });
+        else delta = { content: "等待后台重新导出。" };
+      } else if (latest("build_dataset")) delta = { content: "等待数据集构建。" };
+      else if (context.commands?.some((command) => command.action === "confirm")) delta = invoke("build_dataset", { generation: "model", scope: {
+        memoryIds: context.commands.filter((command) => command.action === "confirm").flatMap((command) => command.after.map((ref) => ref.id)),
+      } });
+      else if (latest("inspect_memories")) delta = invoke("change_memories", { action: "confirm", entries: latest("inspect_memories").memories.map(({ ref }) => ({ ref })), basis: "user", instructionQuote: goal, reason: "用户明确确认文字记录" });
+      else delta = invoke("inspect_memories", { view: "draft", query: "备用钥匙" });
+    } else if (latest("write_artifact")) delta = { content: "两份资料已整理并保存带来源的结果，观察保持待核对。" };
+    else if (notification) delta = invoke("write_artifact", { title: "媒体整理结果", content: "文字与照片已逐份处理。文字记录保留原文，图片为测试观察，均等待核对。", sourceAssetIds: (context.assets || []).map((item) => item.id) });
+    else if (latest("process_assets")) delta = { content: "等待资料处理完成。" };
+    else delta = invoke("process_assets", {});
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (value, finish_reason) => "data: " + JSON.stringify({ id: "agent-first-browser", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta: value, finish_reason }], usage: { prompt_tokens: 250, completion_tokens: 100, total_tokens: 350 } }) + "\n\n";
+    response.end(frame(delta, null) + frame({}, delta.tool_calls ? "tool_calls" : "stop") + "data: [DONE]\n\n");
+    return;
+  }
+  if (JSON.stringify(messages).includes("后台工具流程测试")) {
+    const submitted = messages.some((message) => message.tool_calls?.some((call) => call.function?.name === "process_assets"));
+    const notified = JSON.stringify(messages).includes("后台作业返回的数据");
+    const delta = submitted ? { content: notified ? "后台处理完成，观察等待核对。" : "处理任务已受理。" }
+      : { tool_calls: [{ index: 0, id: "background-process", type: "function", function: { name: "process_assets", arguments: "{}" } }] };
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (value, finish_reason) => "data: " + JSON.stringify({ id: "background-browser", object: "chat.completion.chunk", created: 1,
+      model: "background-browser-test", choices: [{ index: 0, delta: value, finish_reason }], usage: { prompt_tokens: 180, completion_tokens: 80, total_tokens: 260 } }) + "\n\n";
+    response.end(frame(delta, null) + frame({}, submitted ? "stop" : "tool_calls") + "data: [DONE]\n\n");
+    return;
+  }
   if (prompt.includes("错误测试")) {
     response.writeHead(502, { "Content-Type": "application/json" });
     response.end(
@@ -177,7 +342,7 @@ const server = createServer(async (request, response) => {
               ],
             ]
           : prompt.includes("回忆")
-            ? [["search_memories", { query: "公园" }]]
+            ? [["search_memories", { query: prompt.includes("照片") ? "照片 测试色块" : "公园" }]]
             : prompt.includes("整理") || prompt.includes("等待测试")
               ? [
                   [

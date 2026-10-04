@@ -108,6 +108,7 @@ test("text imports expose real processing, evidence, review and corrected people
   await expect(firstJob.getByText(/输入 240 · 输出 120 tokens/)).toBeVisible();
   await page.getByRole("tab", { name: /待核对/ }).click();
   const detail = await openMemory(page, "运河散步");
+  await detail.getByRole("button", { name: /原始依据/ }).click();
   await expect(detail.locator("blockquote")).toContainText(records[1].text);
   await detail.getByRole("button", { name: "确认记住", exact: true }).click();
   await detail.getByRole("button", { name: "纠正记忆" }).click();
@@ -236,7 +237,7 @@ test("conflicts require visible replacement and synthetic space survives source 
   await page.getByRole("tab", { name: /待核对/ }).click();
   const detail = await openMemory(page, "现居杭州（示例）");
   await detail.getByRole("button", { name: "确认记住", exact: true }).click();
-  await detail.getByRole("button", { name: "1 处来源", exact: true }).click();
+  await detail.getByRole("button", { name: /原始依据/ }).click();
   await detail.getByRole("link", { name: /01-profile.md/ }).click();
   await expect(
     detail.getByRole("heading", { name: "01-profile.md", exact: true }),

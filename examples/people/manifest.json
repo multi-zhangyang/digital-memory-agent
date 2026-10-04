@@ -1,0 +1,50 @@
+{
+  "purpose": "公开图片仅用于隔离的关联测试；姓名来自来源人工核对，不作为编码器输入。",
+  "images": [
+    {
+      "file": "subject-a-1.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Official_portrait_of_Barack_Obama.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/e/e9/Official_portrait_of_Barack_Obama.jpg",
+      "author": "Pete Souza",
+      "license": "CC BY 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "sha256": "19ec613e6831dd0c285b907f4cf1be13a654f8ac237435146320ec3dcc42cd45",
+      "bytes": 803500,
+      "groundTruth": {
+        "subject": "Barack Obama",
+        "samePersonGroup": "a"
+      },
+      "changes": "None; original downloaded bytes. Processing copies are resized locally."
+    },
+    {
+      "file": "subject-a-2.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:President_Barack_Obama.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/8/8d/President_Barack_Obama.jpg",
+      "author": "Pete Souza",
+      "license": "Public domain (US government work)",
+      "licenseUrl": "https://commons.wikimedia.org/wiki/Template:PD-USGov-POTUS",
+      "sha256": "744dd848fbb0584229169e01c4944664957c62495fb9e8af514a088ebca43e19",
+      "bytes": 1276121,
+      "groundTruth": {
+        "subject": "Barack Obama",
+        "samePersonGroup": "a"
+      },
+      "changes": "None; original downloaded bytes. Processing copies are resized locally."
+    },
+    {
+      "file": "subject-b-1.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Joe_Biden_official_portrait_2013.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/f/f4/Joe_Biden_official_portrait_2013.jpg",
+      "author": "David Lienemann",
+      "license": "Public domain (US government work)",
+      "licenseUrl": "https://commons.wikimedia.org/wiki/Template:PD-USGov-POTUS",
+      "sha256": "ad176d4d368e0944c666bea12e6372347f27d1194837e6731766f878d254bdee",
+      "bytes": 2022950,
+      "groundTruth": {
+        "subject": "Joe Biden",
+        "samePersonGroup": "b"
+      },
+      "changes": "None; original downloaded bytes. Processing copies are resized locally."
+    }
+  ]
+}

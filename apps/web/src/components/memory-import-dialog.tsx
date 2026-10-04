@@ -36,12 +36,14 @@ export function MemoryImportDialog({
   space,
   assets,
   models,
+  defaultModelId,
   onClose,
   onStarted,
 }: {
   space: MemorySpace;
   assets: Asset[];
   models: ModelInfo[];
+  defaultModelId?: string;
   onClose: () => void;
   onStarted: (job: MemoryImportJob) => void;
 }) {
@@ -51,7 +53,7 @@ export function MemoryImportDialog({
   const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [query, setQuery] = useState("");
-  const [modelId, setModelId] = useState(models[0]?.id || "");
+  const [modelId, setModelId] = useState(defaultModelId || models[0]?.id || "");
   const [thinking, setThinking] = useState<ThinkingLevel>("low");
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
@@ -328,9 +330,6 @@ export function MemoryImportDialog({
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
-              由所选模型实际提取。示例不会进入你的个人记忆。
-            </p>
           </div>
         )}
         {error && (

@@ -25,7 +25,7 @@ import {
   resolveDirectory,
 } from "./local-directories.js";
 
-import { UserFacingError } from "./runtime.js";
+import { UserFacingError } from "./harness/runtime.js";
 
 export interface PrivateHarnessSettings {
   searchEnabled: boolean;

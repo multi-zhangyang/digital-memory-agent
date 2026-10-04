@@ -1,5 +1,7 @@
 # 第三阶段：Agent 工作台与第一层个人记忆
 
+> 历史阶段记录：保留当时的决策、实测和限制。当前产品以 [产品定义](../product.md)、[架构](../architecture.md) 和 [Harness 重构计划](0018-harness-refactor.md) 为准。
+
 状态：2026-10-03 已实现并完成集成验收。下列清单记录本阶段实际交付；缩减项与后续能力单独列出。长期原则继续由 AGENTS.md 管理。
 
 设计依据见 [Agent 工作台研究](../design/0001-agent-workspace-research.md)。

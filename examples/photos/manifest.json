@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "purpose": "公开图片观察评估，不代表用户经历；原始图像不进入 Git。",
+  "photos": [
+    {
+      "id": "coffee",
+      "file": "coffee.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Morning_cup_of_coffee_black_no_sugar.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/9/9d/Morning_cup_of_coffee_black_no_sugar.jpg",
+      "author": "Jon Sullivan",
+      "license": "Public domain — released by the author",
+      "sha256": "d762b108fe5620bcc1420f49c39541c7b85c3c93afeab52941877fba86cc53cf",
+      "review": "白色带蓝色花纹的杯碟、深色液体、木桌；不能从文件名推断无糖、用户偏好或拍摄日期。"
+    },
+    {
+      "id": "bridge",
+      "file": "bridge.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Golden_Gate_Bridge_on_a_foggy_day.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/8/88/Golden_Gate_Bridge_on_a_foggy_day.jpg",
+      "author": "MallardTV",
+      "license": "CC0 1.0",
+      "sha256": "96258c4ccd5742a1b4d61922ccc85e3f0695a45165af7a215ded3bf437d4d98a",
+      "review": "仰视红色桥塔与悬索，浓雾遮挡远处；水面和桥面不可见，不能认定用户到访。具体地点需标记为推断。"
+    },
+    {
+      "id": "astronaut",
+      "file": "astronaut.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:AS11-40-5875_-_Apollo_11_-_Apollo_11_Mission_image_-_Astronaut_Edwin_Aldrin_salutes_the_U.S._flag_that_has_been_placed_on_the_moon_-_NARA_-_16685052.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/9/99/AS11-40-5875_-_Apollo_11_-_Apollo_11_Mission_image_-_Astronaut_Edwin_Aldrin_salutes_the_U.S._flag_that_has_been_placed_on_the_moon_-_NARA_-_16685052.jpg",
+      "author": "NASA; archived by the U.S. National Archives (NAID 16685052)",
+      "license": "Public domain in the United States — NASA work (PD-USGov-NASA)",
+      "sha256": "e8e9c45654cef2e123b759890fe4ec1bfa70e531d054f2c62ba4f5acd8846a78",
+      "review": "白色宇航服、旗帜、灰色地面与脚印、左侧部分设备；来源网页的姓名和日期不是像素证据，不传给模型。"
+    }
+  ]
+}

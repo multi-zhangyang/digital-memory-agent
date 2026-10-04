@@ -1,6 +1,7 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
+import type { EvidenceRead, ProcessingAssetResult, VideoSourceIndex } from "@memory/contracts";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { FileText } from "lucide-react";
@@ -28,6 +29,7 @@ import {
   TerminalStatus,
 } from "@/components/ai-elements/terminal";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Sources,
@@ -35,7 +37,10 @@ import {
   SourcesContent,
   Source,
 } from "@/components/ai-elements/sources";
-import { assetUrl, formatBytes } from "@/lib/api";
+import { assetUrl, datasetDownloadUrl, evidencePreviewUrl, formatBytes, videoTime } from "@/lib/api";
+import { VideoPlayback } from "./video-evidence";
+import { ProcessingAssets } from "./processing-assets";
+import { VideoIndexFrames } from "./video-index-frames";
 
 const CodeBlock = dynamic(() =>
   import("@/components/ai-elements/code-block").then(
@@ -54,11 +59,25 @@ const labels: Record<string, string> = {
   web_read: "阅读网页",
   search_assets: "查找资料",
   read_asset_text: "读取文字",
+  search_evidence: "检索素材证据",
+  read_evidence: "读取原始证据",
   update_plan: "更新步骤",
   write_artifact: "保存整理结果",
   read_artifact: "查看整理结果",
   propose_memory: "提出记忆草稿",
   search_memories: "检索个人记忆",
+  inspect_memories: "查看记忆记录",
+  change_memories: "修订记忆",
+  manage_memory_links: "整理记忆关联",
+  inspect_dataset: "检查训练样本",
+  review_dataset: "核对训练样本",
+  deliver_dataset: "交付训练文件",
+  process_assets: "处理资料",
+  read_job_result: "读取作业结果",
+  manage_job: "管理后台作业",
+  build_dataset: "构建训练资料",
+  rebuild_dataset: "重建训练资料",
+  audit_dataset: "批量核验训练样本",
   ask_user: "等待补充",
 };
 
@@ -169,6 +188,7 @@ function ToolResult({
         text?: string;
         name?: string;
         assetId?: string;
+        files?: Array<{ name: string; href: string; bytes: number; records?: number; sha256: string }>;
       }
     | undefined;
   if (name === "bash") {
@@ -190,6 +210,33 @@ function ToolResult({
         <TerminalContent className="text-xs" />
       </Terminal>
     );
+  }
+  if (name === "deliver_dataset" && Array.isArray(value?.files))
+    return (
+      <Attachments variant="list">
+        {value.files.filter((file) => datasetDownloadUrl(file.href)).map((file) => (
+          <Attachment key={file.href} className="w-full" data={{ id: file.href, type: "file", mediaType: "application/octet-stream", filename: file.name, url: file.href }}>
+            <Button asChild variant="ghost" className="h-auto w-full justify-start px-0 text-xs font-normal">
+              <a href={file.href} download={file.name} title={`SHA-256: ${file.sha256}`}>
+                <AttachmentPreview />
+                <AttachmentInfo />
+                <span className="ml-auto shrink-0 text-muted-foreground">{file.records === undefined ? "" : `${file.records} 条 · `}{formatBytes(file.bytes)}</span>
+              </a>
+            </Button>
+          </Attachment>
+        ))}
+      </Attachments>
+    );
+  if (name === "read_evidence" && (output as EvidenceRead | undefined)?.source?.view)
+    return <EvidencePreview output={output as EvidenceRead & { imageDelivered?: boolean }} />;
+  if (name === "read_job_result") {
+    const job = output as { title: string; result?: Partial<VideoSourceIndex> & { assets?: ProcessingAssetResult[]; assetId?: string; sourceHash?: string } };
+    return <div className="flex flex-col gap-3">
+      {!!job.result?.assets?.length && <ProcessingAssets assets={job.result.assets} />}
+      {job.result?.frames && job.result.assetId && job.result.sourceHash && <VideoIndexFrames frames={job.result.frames} assetId={job.result.assetId}
+        version={job.result.sourceHash} name={job.title} />}
+      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+    </div>;
   }
   if (Array.isArray(value?.results))
     return (
@@ -279,4 +326,23 @@ function ToolResult({
       language={typeof output === "string" ? "text" : "json"}
     />
   );
+}
+
+function EvidencePreview({ output }: { output: EvidenceRead & { imageDelivered?: boolean } }) {
+  const [failed, setFailed] = useState(false);
+  const source = output.source!, view = source.view!;
+  const url = evidencePreviewUrl(source.previewUrl);
+  const label = view.region ? "查看局部" : source.video ? "查看画面" : "查看整图";
+  return <div className="flex flex-col gap-3" data-testid="evidence-preview">
+    {url && !failed && <Attachments variant="list" onErrorCapture={() => setFailed(true)}>
+      <Attachment data={{ id: view.sha256, type: "file", mediaType: "image/jpeg", filename: `${output.hit.title} · ${source.video ? videoTime(source.video.timestamp) : view.region ? "局部" : "整图"}`, url }}>
+        <AttachmentPreview /><AttachmentInfo />
+        <Button asChild variant="outline" size="sm"><a href={url} target="_blank" rel="noreferrer">{label}</a></Button>
+        {source.video && <VideoPlayback assetId={source.assetId} name={output.hit.title} video={source.video} previewUrl={url} />}
+      </Attachment>
+    </Attachments>}
+    {failed && <Alert><AlertTitle>此版本的图片已不可用，请重新读取原件。</AlertTitle></Alert>}
+    {!output.imageDelivered && <Alert><AlertTitle>当前任务模型未读取图片像素。</AlertTitle></Alert>}
+    <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+  </div>;
 }

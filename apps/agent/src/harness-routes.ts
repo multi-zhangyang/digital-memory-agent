@@ -12,7 +12,7 @@ import type { Store } from "./store.js";
 import type { AppConfig } from "./config.js";
 import { projectRoot } from "./config.js";
 import { browseDirectories, isWithin } from "./local-directories.js";
-import { UserFacingError, type AgentRuntime } from "./runtime.js";
+import { UserFacingError, type AgentRuntime } from "./harness/runtime.js";
 import type { WorkspaceService } from "./workspace-service.js";
 import {
   listProjectFiles,

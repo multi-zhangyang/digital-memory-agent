@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "scope": "六张新选的许可明确公开照片。原件、中性编号与核对标准在模型输出前固定；来源信息和标准不提供给处理器。",
+  "images": [
+    {
+      "id": "scene-01",
+      "file": "scene-01.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Tasse_de_caf%C3%A9_servie_avec_cuill%C3%A8re_tordue_%C3%A0_Vichy_%28ao%C3%BBt_2019%29.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/6/6c/Tasse_de_caf%C3%A9_servie_avec_cuill%C3%A8re_tordue_%C3%A0_Vichy_%28ao%C3%BBt_2019%29.jpg",
+      "bytes": 1268950,
+      "sourceSha1": "fcd2d8bdc5695539b5531bf5990d653027b3dbdc",
+      "sha256": "e36c6cf82c2cc9329b0c3c24423d08dad9bb51d3bbfe0afd7d2a877afe874dd7",
+      "dimensions": [
+        3297,
+        2802
+      ],
+      "author": "Sebleouf",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "changes": "原件未修改。模型仅接收定向缩放的无元数据预览。",
+      "pixelRubric": {
+        "required": [
+          "白色杯子放在白色碟上，杯柄朝左，内有棕色液体与泡沫。",
+          "金属勺横放在碟子前部，柄朝左且有明显弯折，勺头朝右。",
+          "杯碟下方是带人物插画的彩色纸垫，左后方有白色小包装。"
+        ],
+        "focus": [
+          "物体",
+          "空间关系",
+          "细节"
+        ],
+        "reviewStatus": "pixels-reviewed-before-model",
+        "unsupported": "不得从公开来源标题认定真实姓名、关系、地点、日期、用户经历或具体食物配方。"
+      }
+    },
+    {
+      "id": "scene-02",
+      "file": "scene-02.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Close-up_of_Woman_Holding_Coffee_Cup_at_Cafe_%2828217840617%29.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/9/90/Close-up_of_Woman_Holding_Coffee_Cup_at_Cafe_%2828217840617%29.jpg",
+      "bytes": 1135765,
+      "sourceSha1": "37bfa4eb605cc2fac6ccbc4846c3187bda2aba6c",
+      "sha256": "48b1a7b9f56563a343aff24e51b4faa96be59eeca94aeb1e87ef886020e0c285",
+      "dimensions": [
+        5840,
+        3899
+      ],
+      "author": "Chevanon Photography",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "changes": "原件未修改。模型仅接收定向缩放的无元数据预览。",
+      "pixelRubric": {
+        "required": [
+          "手托黑色杯子，内有棕色液体和白色花纹。",
+          "左上方金属小壶向杯中倾倒白色液体。",
+          "画面主体是杯子与手的近景，背景较暗且失焦。"
+        ],
+        "focus": [
+          "物体",
+          "动作",
+          "颜色"
+        ],
+        "reviewStatus": "pixels-reviewed-before-model",
+        "unsupported": "不得从公开来源标题认定真实姓名、关系、地点、日期、用户经历或具体食物配方。"
+      }
+    },
+    {
+      "id": "scene-03",
+      "file": "scene-03.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Noodle_Bowl_for_Lunch_%28Unsplash%29.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/7/79/Noodle_Bowl_for_Lunch_%28Unsplash%29.jpg",
+      "bytes": 10899072,
+      "sourceSha1": "d1ac12265325277d255f7b3e8149989facfb05f3",
+      "sha256": "9e869ed0ac5515b0646181e7717dc1fe38409d201d0870866f3c1e2604cb89ec",
+      "dimensions": [
+        5184,
+        3456
+      ],
+      "author": "Tran Mau Tri Tam tranmautritam",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "changes": "原件未修改。模型仅接收定向缩放的无元数据预览。",
+      "pixelRubric": {
+        "required": [
+          "白色碗放在浅色织纹桌面，内有浅色细面条。",
+          "碗中上方有绿色叶片、褐色不规则块、黄色块和橙色块。"
+        ],
+        "focus": [
+          "物体",
+          "属性",
+          "桌面"
+        ],
+        "reviewStatus": "pixels-reviewed-before-model",
+        "unsupported": "不得从公开来源标题认定真实姓名、关系、地点、日期、用户经历或具体食物配方。"
+      }
+    },
+    {
+      "id": "scene-04",
+      "file": "scene-04.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Eating_Asian_Noodles_%28Unsplash%29.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Eating_Asian_Noodles_%28Unsplash%29.jpg",
+      "bytes": 1221125,
+      "sourceSha1": "0ff4e27a377e149f31f956819b52caf1f2f41bc3",
+      "sha256": "051436ae2ed97659012269ab6230b5dfcc4ab273ab7a4f202685833ca4d9cc5d",
+      "dimensions": [
+        3264,
+        4928
+      ],
+      "author": "Artur Rutkowski alienowicz",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "changes": "原件未修改。模型仅接收定向缩放的无元数据预览。",
+      "pixelRubric": {
+        "required": [
+          "黑色碗里有浅色宽面条、粉橙色弯曲虾状物、绿叶和红色环状物。",
+          "浅色筷子从左上方伸入并夹起宽面条，下方可见托碗的手。",
+          "背景为深色，碗有部分被画面边缘截断。"
+        ],
+        "focus": [
+          "物体",
+          "动作",
+          "空间关系"
+        ],
+        "reviewStatus": "pixels-reviewed-before-model",
+        "unsupported": "不得从公开来源标题认定真实姓名、关系、地点、日期、用户经历或具体食物配方。"
+      }
+    },
+    {
+      "id": "scene-05",
+      "file": "scene-05.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Friends_Walking_Together_5277548768.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/7/77/Friends_Walking_Together_5277548768.jpg",
+      "bytes": 10856520,
+      "sourceSha1": "2b6af2e386985b8f7499ba40449c4322eb10e1f8",
+      "sha256": "0c57f911fe046cce228d38d2d5bc9c319ba405976d5bdc02285b7cb997ca7fb7",
+      "dimensions": [
+        4288,
+        2848
+      ],
+      "author": "CGP Grey",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "changes": "原件未修改。模型仅接收定向缩放的无元数据预览。",
+      "pixelRubric": {
+        "required": [
+          "前景三人背向镜头沿雪地道路行走，左侧红外套、中间深色外套与灰裤、右侧深色衣裤。",
+          "左侧有金属护栏和白色石栏，背景有树木和较远的人。",
+          "地面与栏杆积雪，前景三人和背景人数分开描述。"
+        ],
+        "focus": [
+          "人数",
+          "颜色",
+          "场景"
+        ],
+        "reviewStatus": "pixels-reviewed-before-model",
+        "unsupported": "不得从公开来源标题认定真实姓名、关系、地点、日期、用户经历或具体食物配方。"
+      }
+    },
+    {
+      "id": "scene-06",
+      "file": "scene-06.jpg",
+      "source": "https://commons.wikimedia.org/wiki/File:Couple_walking_in_park.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/1/11/Couple_walking_in_park.jpg",
+      "bytes": 1145682,
+      "sourceSha1": "f02855e362881e1800dc5c57a40453faf8123fdf",
+      "sha256": "842f6ac641ab300de9921cf4ee6757555bd0a74a2fd0b5d2ad3b6ee07cdc4ca3",
+      "dimensions": [
+        3000,
+        1993
+      ],
+      "author": "Bill Branson (Photographer)",
+      "license": "Public domain",
+      "licenseUrl": "",
+      "changes": "原件未修改。模型仅接收定向缩放的无元数据预览。",
+      "pixelRubric": {
+        "required": [
+          "前景两人在树下草地上相邻站立或行走。",
+          "左侧穿灰色短袖、蓝色短裤、白色袜鞋；右侧穿粉色外套和长裤、白色上衣。",
+          "右侧人物一只手抬到胸前，两人互相看向对方并微笑。"
+        ],
+        "focus": [
+          "人数",
+          "颜色",
+          "动作"
+        ],
+        "reviewStatus": "pixels-reviewed-before-model",
+        "unsupported": "不得从公开来源标题认定真实姓名、关系、地点、日期、用户经历或具体食物配方。"
+      }
+    }
+  ]
+}

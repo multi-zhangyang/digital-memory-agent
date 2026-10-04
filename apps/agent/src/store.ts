@@ -1,10 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Asset, Conversation, MemorySpace } from "@memory/contracts";
 import { HarnessStore } from "./harness-store.js";
+import { MemoryRecords } from "./memory/records.js";
+import { MemoryCommands } from "./memory/commands.js";
 import { WorkspaceStore } from "./workspace-store.js";
+import * as sqliteVec from "sqlite-vec";
+import { EventOutbox } from "./storage/event-outbox.js";
 
 type ConversationRow = Omit<Conversation, "running">;
 
@@ -14,7 +18,10 @@ export class Store {
   readonly sessionsDir: string;
   readonly workspaceDir: string;
   readonly work: WorkspaceStore;
+  readonly memories: MemoryRecords;
+  readonly memoryCommands: MemoryCommands;
   readonly harness: HarnessStore;
+  readonly events: EventOutbox;
 
   constructor(readonly dataDir: string) {
     this.assetsDir = join(dataDir, "assets");
@@ -27,7 +34,9 @@ export class Store {
       this.workspaceDir,
     ])
       mkdirSync(dir, { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(join(dataDir, "memory.sqlite"));
+    this.db = new DatabaseSync(join(dataDir, "memory.sqlite"), { allowExtension: true });
+    sqliteVec.load(this.db);
+    this.db.enableLoadExtension(false);
     this.db.exec(
       "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
     );
@@ -48,8 +57,26 @@ export class Store {
         "BEGIN; ALTER TABLE assets ADD COLUMN memorySpace TEXT NOT NULL DEFAULT 'personal'; CREATE INDEX assets_space_hash ON assets(memorySpace, sha256); INSERT INTO migrations VALUES (2); COMMIT;",
       );
     }
-    this.work = new WorkspaceStore(this.db);
+    if (!this.db.prepare("SELECT version FROM migrations WHERE version=3").get() &&
+      this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='workspace_records'").get()) {
+      const backup = join(dataDir, "before-continuous-memory.sqlite");
+      if (!existsSync(backup)) this.db.prepare("VACUUM INTO ?").run(backup);
+    }
+    if (!this.db.prepare("SELECT version FROM migrations WHERE version=4").get() &&
+      this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='workspace_records'").get()) {
+      const backup = join(dataDir, "before-memory-indexes.sqlite");
+      if (!existsSync(backup)) this.db.prepare("VACUUM INTO ?").run(backup);
+    }
+    if (!this.db.prepare("SELECT version FROM migrations WHERE version=7").get() &&
+      this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='workspace_records'").get()) {
+      const backup = join(dataDir, "before-memory-graph.sqlite");
+      if (!existsSync(backup)) this.db.prepare("VACUUM INTO ?").run(backup);
+    }
+    this.events = new EventOutbox(this.db);
+    this.memories = new MemoryRecords(this.db, this.events);
+    this.work = new WorkspaceStore(this.db, this.memories);
     this.harness = new HarnessStore(this.dataDir, this.db);
+    this.memoryCommands = new MemoryCommands(this);
   }
 
   createConversation(): ConversationRow {
@@ -87,7 +114,8 @@ export class Store {
       .run(modelId, title || null, new Date().toISOString(), id);
   }
 
-  addAsset(asset: Asset) {
+  addAsset(asset: Asset, options?: { processing: "requested" | "automatic" }) {
+    this.memories.transaction(() => {
     this.db
       .prepare("INSERT INTO assets VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
       .run(
@@ -100,6 +128,8 @@ export class Store {
         asset.createdAt,
         asset.memorySpace || "personal",
       );
+      this.events.publish("asset.added", asset.id, asset.sha256, { processing: options?.processing || "automatic" });
+    });
   }
 
   assets(space: MemorySpace = "personal"): Asset[] {
@@ -117,7 +147,7 @@ export class Store {
     offset: number,
   ) {
     const where =
-      " WHERE memorySpace='personal' AND instr(lower(name), lower(?)) > 0 AND (? IS NULL OR kind = ?)";
+      " WHERE memorySpace='personal' AND NOT EXISTS (SELECT 1 FROM memory_suppressions WHERE hash=assets.sha256) AND instr(lower(name), lower(?)) > 0 AND (? IS NULL OR kind = ?)";
     const args = [query, kind ?? null, kind ?? null];
     const total = (
       this.db
@@ -144,6 +174,9 @@ export class Store {
       | Asset
       | undefined;
   }
+
+  recordMemoryActivity(runId: string, patch: Partial<import("@memory/contracts").Run>, type: string) { this.work.patchRun(runId, patch, type); }
+  recordSource(runId: string, source: import("@memory/contracts").SourceRef) { this.work.source(runId, source); }
 
   close() {
     this.db.close();

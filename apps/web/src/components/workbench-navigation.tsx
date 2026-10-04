@@ -29,6 +29,7 @@ import {
   Brain,
   ChevronRight,
   CircleAlert,
+  Database,
   FileText,
   Folder,
   FolderOpen,
@@ -52,6 +53,8 @@ export type WorkbenchPage =
   | "assets"
   | "memory"
   | "artifacts"
+  | "datasets"
+  | "processing"
   | "settings";
 
 function taskTime(value: string) {
@@ -182,6 +185,19 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="gap-1">
+        <SidebarGroup className="px-3">
+          <SidebarMenu>
+            {[
+              { id: "assets", label: "资料库", icon: FolderOpen },
+              { id: "memory", label: "个人记忆", icon: Brain },
+              { id: "datasets", label: "数据集", icon: Database },
+            ].map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}>
+              <SidebarMenuButton tooltip={label} aria-label={label} isActive={view === id} onClick={() => onView(id as WorkbenchPage)}>
+                <Icon /><span>{label}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>)}
+          </SidebarMenu>
+        </SidebarGroup>
         {view === "assets" ? (
           <SidebarGroup className="mt-4 px-3 group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel className="font-normal">
@@ -218,7 +234,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
           <SidebarGroup className="mt-4 px-3 group-data-[collapsible=icon]:hidden">
             <div className="mb-1 flex items-center justify-between pl-2">
               <SidebarGroupLabel className="h-7 px-0 font-normal text-muted-foreground/70">
-                项目
+                工作目录
               </SidebarGroupLabel>
               <div className="flex items-center">
                 <Tooltip>
@@ -337,7 +353,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
                                   data-pinned={!!task.pinned}
                                 >
                                   {task.running ? (
-                                    task.status === "waiting" ? (
+                                    task.status === "waiting" && task.waitingFor !== "jobs" ? (
                                       <CircleAlert
                                         className="size-3.5 shrink-0"
                                         aria-label="等待确认"
@@ -345,7 +361,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
                                     ) : (
                                       <LoaderCircle
                                         className="size-3.5 shrink-0 animate-spin"
-                                        aria-label="执行中"
+                                        aria-label={task.waitingFor === "jobs" ? "等待后台作业" : "执行中"}
                                       />
                                     )
                                   ) : task.pinned ? (
@@ -423,8 +439,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
       <SidebarFooter className="gap-2 p-3">
         <SidebarMenu className="gap-0.5">
           {[
-            { id: "assets", label: "资料库", icon: FolderOpen },
-            { id: "memory", label: "个人记忆", icon: Brain },
+            { id: "processing", label: "处理与核对", icon: ListTodo },
             { id: "artifacts", label: "整理结果", icon: FileText },
           ].map(({ id, label, icon: Icon }) => (
             <SidebarMenuItem key={id}>

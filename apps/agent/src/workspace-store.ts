@@ -1,3 +1,5 @@
+import { RecordStore, type StoredRecord } from "./storage/record-store.js";
+import { MemoryRecords } from "./memory/records.js";
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
@@ -9,57 +11,51 @@ import type {
   RunEvent,
   RunInput,
   SourceRef,
+  MemoryEvidence,
 } from "@memory/contracts";
-import { UserFacingError } from "./runtime.js";
-import { memorySpace, searchMemories } from "./memory-retrieval.js";
+import { UserFacingError } from "./harness/runtime.js";
+import { MemoryQueryService } from "./memory/query-service.js";
+import { MemoryLedger, combineEvidence, evidenceOf } from "./memory/ledger.js";
+import { sourceFromRead } from "./memory/source-reads.js";
 
 type RecordType = Run | Artifact | MemoryEntry | AssetCollection;
 const now = () => new Date().toISOString();
 
-export class WorkspaceStore {
-  constructor(private readonly db: DatabaseSync) {
+export class WorkspaceStore extends RecordStore {
+  readonly memory: MemoryLedger;
+  readonly queries: MemoryQueryService;
+  constructor(db: DatabaseSync, readonly memories = new MemoryRecords(db)) {
+    super(db);
     db.exec(`CREATE TABLE IF NOT EXISTS workspace_records (id TEXT PRIMARY KEY, kind TEXT NOT NULL, conversationId TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS workspace_records_kind ON workspace_records(kind, conversationId);
       CREATE TABLE IF NOT EXISTS workspace_versions (id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(id, version));
       CREATE TABLE IF NOT EXISTS run_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, runId TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL, createdAt TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS run_events_run ON run_events(runId, seq);
+      CREATE TABLE IF NOT EXISTS run_record_refs (runId TEXT NOT NULL,kind TEXT NOT NULL,ordinal INTEGER NOT NULL,recordId TEXT NOT NULL,version INTEGER NOT NULL,
+        PRIMARY KEY(runId,kind,ordinal),UNIQUE(runId,kind,recordId,version));
       CREATE TABLE IF NOT EXISTS conversation_preferences (id TEXT PRIMARY KEY, pinned INTEGER DEFAULT 0, archived INTEGER DEFAULT 0);`);
+    this.memory = memories.ledger;
+    this.queries = memories.queries;
   }
-  transaction<T>(operation: () => T): T {
-    this.db.exec("SAVEPOINT workspace_write");
-    try {
-      const result = operation();
-      this.db.exec("RELEASE workspace_write");
-      return result;
-    } catch (error) {
-      this.db.exec("ROLLBACK TO workspace_write; RELEASE workspace_write");
-      throw error;
-    }
+  recordRef(runId: string, kind: "memory" | "sample" | "source", id: string, version: number) {
+    this.db.prepare(`INSERT OR IGNORE INTO run_record_refs SELECT ?,?,coalesce(max(ordinal),0)+1,?,?
+      FROM run_record_refs WHERE runId=? AND kind=?`).run(runId, kind, id, version, runId, kind);
+    const row = this.db.prepare("SELECT ordinal FROM run_record_refs WHERE runId=? AND kind=? AND recordId=? AND version=?")
+      .get(runId, kind, id, version) as { ordinal: number };
+    return ({ memory: "m", sample: "s", source: "e" }[kind]) + row.ordinal;
   }
-  get<T extends RecordType>(kind: string, id: string): T | undefined {
-    const row = this.db
-      .prepare("SELECT data FROM workspace_records WHERE kind=? AND id=?")
-      .get(kind, id) as { data: string } | undefined;
-    return row ? JSON.parse(row.data) : undefined;
+  resolveRecordRef(runId: string, kind: "memory" | "sample", input: { id: string; version: number } | { ref: string; version?: number }) {
+    if (!("ref" in input)) return { id: input.id, version: input.version };
+    const prefix = kind === "memory" ? "m" : "s";
+    const ordinal = input.ref.startsWith(prefix) && Number(input.ref.slice(1));
+    const row = ordinal && Number.isSafeInteger(ordinal) && this.db.prepare("SELECT recordId AS id,version FROM run_record_refs WHERE runId=? AND kind=? AND ordinal=?")
+      .get(runId, kind, ordinal) as { id: string; version: number } | undefined;
+    if (!row) throw new UserFacingError(409, "REF_NOT_FOUND", "引用不属于本次任务，请重新检查记录并使用返回的 ref");
+    if (input.version !== undefined && input.version !== row.version) throw new UserFacingError(409, "VERSION_CONFLICT", "引用版本不一致，请重新检查记录");
+    return row;
   }
-  list<T extends RecordType>(kind: string, conversationId?: string): T[] {
-    return (
-      this.db
-        .prepare(
-          "SELECT data FROM workspace_records WHERE kind=? AND (? IS NULL OR conversationId=?) ORDER BY rowid",
-        )
-        .all(kind, conversationId ?? null, conversationId ?? null) as {
-        data: string;
-      }[]
-    ).map((row) => JSON.parse(row.data));
-  }
-  save<T extends RecordType>(kind: string, value: T): T {
-    this.db
-      .prepare(
-        "INSERT INTO workspace_records VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
-      )
-      .run(value.id, kind, value.conversationId, JSON.stringify(value));
-    return value;
+  override save<T extends StoredRecord>(kind: string, value: T): T {
+    return kind === "memory" ? this.memories.save(kind, value) : super.save(kind, value);
   }
   preferences(id: string) {
     const row = this.db
@@ -78,17 +74,22 @@ export class WorkspaceStore {
       .run(id, Number(value.pinned), Number(value.archived));
   }
   createRun(conversationId: string, input: RunInput) {
+    if (!input.text.trim() && !input.assetIds?.length)
+      throw new UserFacingError(400, "EMPTY", "请输入任务内容或添加资料");
     const run: Run = {
       ...input,
+      ...(!input.text.trim() ? { goal: "整理本次提交的图片和文字资料，检查处理覆盖与失败，保存带来源的整理结果；观察保持待核对。" } : {}),
       id: randomUUID(),
       conversationId,
       status: "queued",
       assetIds: [...new Set(input.assetIds || [])],
       scope: input.scope || "library",
       useMemory: input.useMemory !== false,
+      captureMemory: input.captureMemory ?? this.memory.settings().capture === "graded",
       parts: [],
       sources: [],
       memoryIds: [],
+      memoryEpoch: this.memory.epoch,
       plan: [],
       cursor: 0,
       createdAt: now(),
@@ -150,7 +151,9 @@ export class WorkspaceStore {
         (ref) =>
           ref.assetId === source.assetId &&
           ref.start === source.start &&
-          ref.end === source.end,
+          ref.end === source.end &&
+          ref.video?.timestamp === source.video?.timestamp &&
+          ref.view?.sha256 === source.view?.sha256,
       )
     )
       this.patchRun(runId, { sources: [...run.sources, source] }, "source");
@@ -164,34 +167,24 @@ export class WorkspaceStore {
       throw new Error("只能引用本次实际读取过的资料，请先读取原文。");
     return refs;
   }
-  private version<T extends Artifact | MemoryEntry>(
-    kind: string,
-    value: T,
-    expected?: number,
-  ) {
-    const previous = this.get<T>(kind, value.id);
-    if (previous && expected !== previous.version)
-      throw new UserFacingError(
-        409,
-        "VERSION_CONFLICT",
-        "内容已更新，请重新打开后再保存",
-      );
-    return this.transaction(() => {
-      this.save(kind, value);
-      this.db
-        .prepare("INSERT INTO workspace_versions VALUES (?, ?, ?)")
-        .run(value.id, value.version, JSON.stringify(value));
-      return value;
+  resolveObservationSources(runId: string, assetIds: string[], sourceRefs?: string[] | null) {
+    const run = this.get<Run>("run", runId)!;
+    const reads = run.parts.flatMap((part) => {
+      const source = sourceFromRead(part);
+      return source && part.type === "tool" ? [{ toolCallId: part.toolCallId, source }] : [];
     });
-  }
-  versions<T>(id: string): T[] {
-    return (
-      this.db
-        .prepare(
-          "SELECT data FROM workspace_versions WHERE id=? ORDER BY version DESC",
-        )
-        .all(id) as { data: string }[]
-    ).map((row) => JSON.parse(row.data));
+    const selected = sourceRefs?.length ? sourceRefs.map((ref) => {
+      const row = /^e[1-9][0-9]*$/.test(ref) && this.db.prepare("SELECT recordId FROM run_record_refs WHERE runId=? AND kind='source' AND ordinal=?")
+        .get(runId, Number(ref.slice(1))) as { recordId: string } | undefined;
+      const read = row && reads.find((value) => value.toolCallId === row.recordId);
+      if (!read) throw new UserFacingError(409, "SOURCE_READ_REQUIRED", "请使用本轮原件读取返回的 sourceRef；检索结果不能作为画面读取依据");
+      return read.source;
+    }) : reads.filter(({ source }) => assetIds.includes(source.assetId)).map(({ source }) => source);
+    if (assetIds.some((id) => !selected.some((source) => source.assetId === id)) || selected.some((source) => !assetIds.includes(source.assetId)))
+      throw new UserFacingError(409, "SOURCE_READ_REQUIRED", "只能引用本次实际读取的资料；sourceAssetIds 须与选择的 sourceRefs 对应");
+    if (!sourceRefs?.length && selected.some((source) => source.video) && selected.length > 1)
+      throw new UserFacingError(409, "FRAME_SELECTION_REQUIRED", "视频已读取多个画面，请用 sourceRefs 选择支持这条记忆的画面，不要引用整轮画面");
+    return selected;
   }
   writeArtifact(
     input: Pick<
@@ -206,181 +199,37 @@ export class WorkspaceStore {
       input.id &&
       (!previous || previous.conversationId !== input.conversationId)
     )
-      throw new UserFacingError(404, "NOT_FOUND", "结果不存在");
+      throw new UserFacingError(404, "NOT_FOUND", "结果不存在。新建结果请将 artifactId 和 version 设为 null 或省略；编辑前请读取现有结果的 ID 与版本。");
     return this.version(
       "artifact",
       {
         ...input,
         id: previous?.id || randomUUID(),
         version: (previous?.version || 0) + 1,
+        memoryEpoch: this.memory.epoch,
         createdAt: previous?.createdAt || now(),
         updatedAt: now(),
       },
       input.version,
     );
   }
-  createMemory(
-    input: Omit<MemoryEntry, "id" | "version" | "createdAt" | "updatedAt">,
-  ) {
-    if (input.status === "confirmed" && this.memoryConflicts(input).length)
-      throw new UserFacingError(
-        409,
-        "MEMORY_CONFLICT",
-        "与现有画像冲突，请先核对并选择替代记录",
-      );
-    return this.version("memory", {
-      ...input,
-      id: randomUUID(),
-      version: 1,
-      createdAt: now(),
-      updatedAt: now(),
-    });
+  recordRecall(runId: string, query: MemorySearch, entries: MemoryEntry[], durationMs: number) {
+    const run = this.get<Run>("run", runId)!;
+    const trace = { query, revision: this.memory.revision, at: now(), durationMs: Math.round(durationMs * 100) / 100,
+      matches: entries.map((entry) => ({ id: entry.id, version: entry.version, evidence: evidenceOf(entry) })) };
+    this.patchRun(runId, { memoryRevision: trace.revision, memoryEpoch: this.memory.epoch,
+      memoryIds: [...new Set([...run.memoryIds, ...entries.map((entry) => entry.id)])],
+      memoryTraces: [...(run.memoryTraces || []), trace].slice(-8) }, "recall");
+    return trace;
   }
-  updateMemory(
-    id: string,
-    patch: Partial<
-      Pick<
-        MemoryEntry,
-        | "title"
-        | "content"
-        | "status"
-        | "occurredAt"
-        | "reason"
-        | "people"
-        | "place"
-        | "category"
-        | "uncertainty"
-      >
-    > & { attribute?: MemoryEntry["attribute"] | null },
-    version: number,
-  ) {
-    const previous = this.get<MemoryEntry>("memory", id);
-    if (!previous) throw new UserFacingError(404, "NOT_FOUND", "记忆不存在");
-    if (previous.version !== version)
-      throw new UserFacingError(
-        409,
-        "VERSION_CONFLICT",
-        "记忆已更新，请刷新后重试",
-      );
-    const next: MemoryEntry = {
-      ...previous,
-      ...patch,
-      attribute:
-        patch.attribute === null
-          ? undefined
-          : (patch.attribute ?? previous.attribute),
-    };
-    if (patch.content !== undefined && patch.content !== previous.content) {
-      if (patch.attribute === undefined) next.attribute = undefined;
-      if (patch.people === undefined) next.people = [];
-      if (patch.place === undefined) next.place = "";
-      next.reason = patch.reason || "用户纠正";
-    }
-    if (
-      next.status === "confirmed" &&
-      !next.supersededBy &&
-      this.memoryConflicts(next).length
-    )
-      throw new UserFacingError(
-        409,
-        "MEMORY_CONFLICT",
-        "与现有画像冲突，请先核对并选择替代记录",
-      );
-    return this.version(
-      "memory",
-      {
-        ...next,
-        version: previous.version + 1,
-        updatedAt: now(),
-      },
-      version,
-    );
-  }
-  searchMemories(
-    query: string,
-    limit = 8,
-    filters: Omit<MemorySearch, "query" | "limit"> = {},
-  ): MemoryEntry[] {
-    return searchMemories(this.db, { ...filters, query, limit });
-  }
-  memoryConflicts(
-    entry: Pick<MemoryEntry, "attribute" | "space"> & { id?: string },
-    candidates?: MemoryEntry[],
-  ): MemoryEntry[] {
-    if (!entry.attribute) return [];
-    const value = entry.attribute.value.trim().toLocaleLowerCase();
-    return (candidates || this.list<MemoryEntry>("memory")).filter(
-      (other) =>
-        other.id !== entry.id &&
-        memorySpace(other) === (entry.space || "personal") &&
-        other.status === "confirmed" &&
-        !other.supersededBy &&
-        other.attribute?.key === entry.attribute!.key &&
-        other.attribute.value.trim().toLocaleLowerCase() !== value,
-    );
-  }
-  resolveMemory(
-    id: string,
-    version: number,
-    replace: { id: string; version: number }[],
-  ) {
-    return this.transaction(() => {
-      const current = this.get<MemoryEntry>("memory", id);
-      if (!current || current.version !== version)
-        throw new UserFacingError(
-          409,
-          "VERSION_CONFLICT",
-          "记忆已更新，请刷新后重试",
-        );
-      const conflicts = this.memoryConflicts(current);
-      if (
-        !conflicts.length ||
-        replace.length !== conflicts.length ||
-        new Set(replace.map((ref) => ref.id)).size !== replace.length ||
-        conflicts.some(
-          (other) =>
-            !replace.some(
-              (ref) => ref.id === other.id && ref.version === other.version,
-            ),
-        )
-      )
-        throw new UserFacingError(
-          409,
-          "VERSION_CONFLICT",
-          "冲突记录已改变，请刷新后重新核对",
-        );
-      for (const previous of conflicts)
-        this.version(
-          "memory",
-          {
-            ...previous,
-            supersededBy: id,
-            reason: "用户选择以新记录替代",
-            version: previous.version + 1,
-            updatedAt: now(),
-          },
-          previous.version,
-        );
-      return this.version(
-        "memory",
-        {
-          ...current,
-          status: "confirmed",
-          supersededBy: undefined,
-          replaces: [
-            ...new Set([
-              ...(current.replaces || []),
-              ...conflicts.map((other) => other.id),
-            ]),
-          ],
-          reason: "用户核对并替代旧记录",
-          version: current.version + 1,
-          updatedAt: now(),
-        },
-        version,
-      );
-    });
-  }
+  createMemory(...args: Parameters<MemoryRecords["createMemory"]>) { return this.memories.createMemory(...args); }
+  updateMemory(...args: Parameters<MemoryRecords["updateMemory"]>) { return this.memories.updateMemory(...args); }
+  searchMemories(...args: Parameters<MemoryRecords["searchMemories"]>) { return this.memories.searchMemories(...args); }
+  addMemoryEvidence(...args: Parameters<MemoryRecords["addMemoryEvidence"]>) { return this.memories.addMemoryEvidence(...args); }
+  duplicateMemory(...args: Parameters<MemoryRecords["duplicateMemory"]>) { return this.memories.duplicateMemory(...args); }
+  forgetMemory(...args: Parameters<MemoryRecords["forgetMemory"]>) { return this.memories.forgetMemory(...args); }
+  memoryConflicts(...args: Parameters<MemoryRecords["memoryConflicts"]>) { return this.memories.memoryConflicts(...args); }
+  resolveMemory(...args: Parameters<MemoryRecords["resolveMemory"]>) { return this.memories.resolveMemory(...args); }
   deleteConversation(id: string) {
     this.db.exec("BEGIN");
     try {

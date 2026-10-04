@@ -16,18 +16,40 @@ import type {
 } from "@memory/contracts";
 import { updateConnection, type AppConfig } from "./config.js";
 import { Store } from "./store.js";
-import { PiRuntime } from "./pi-runtime.js";
-import { memoryToolCatalog } from "./memory-tools.js";
-import { type AgentRuntime, UserFacingError } from "./runtime.js";
-import {
-  registerWorkspaceRoutes,
-  WorkspaceService,
-} from "./workspace-service.js";
+import { PiRuntime } from "./integrations/pi/runtime.js";
+import { createPiHost } from "./application/pi-host.js";
+import { createMemoryTools, memoryToolCatalog } from "./memory-tools.js";
+import { type AgentRuntime, UserFacingError } from "./harness/runtime.js";
+import { WorkspaceService } from "./application/task-service.js";
+import { registerWorkspaceRoutes } from "./application/workspace-routes.js";
 
 import { registerHarnessRoutes } from "./harness-routes.js";
-import { generalToolCatalog } from "./general-tools.js";
-import { MemoryImports } from "./memory-imports.js";
+import { createGeneralTools, generalToolCatalog } from "./general-tools.js";
+import { MemoryImports } from "./memory/imports.js";
+import { MemoryCaptures } from "./memory/captures.js";
 import { registerMemoryRoutes } from "./memory-routes.js";
+import { ModelAccess } from "./integrations/pi/model-access.js";
+import { PiMemoryProcessors, type MemoryProcessors } from "./integrations/pi/processors.js";
+import { TaskJobs } from "./harness/jobs.js";
+import { AssetProcessingService } from "./memory/asset-processing-service.js";
+import { createMemoryCommandTools } from "./memory-command-tools.js";
+import { createProcessingTools } from "./processing-tools.js";
+import { LocalMemoryProcessor, type LocalFeatures } from "./integrations/local-features.js";
+import { MemoryFeatureService } from "./memory/feature-service.js";
+import { MemoryEvents } from "./memory/events.js";
+import { createKnowledgeTools } from "./memory-knowledge-tools.js";
+import { registerKnowledgeRoutes } from "./memory-knowledge-routes.js";
+import { DatasetService } from "./memory/dataset-service.js";
+import { createDatasetTools } from "./dataset-tools.js";
+import { registerDatasetRoutes } from "./dataset-routes.js";
+import { CapabilityRegistry } from "./harness/capability-registry.js";
+import { capabilityStatuses } from "./application/capabilities.js";
+import { registerProductRoutes } from "./application/product-routes.js";
+import { AutomaticIntake } from "./memory/automatic-intake.js";
+import { AssetIndexService } from "./memory/asset-index-service.js";
+import { EvidenceService } from "./memory/evidence-service.js";
+import { createEvidenceTools } from "./application/evidence-tools.js";
+import { captureJobs, memoryIndexJobs } from "./application/maintenance-jobs.js";
 
 const uuid = {
   type: "string",
@@ -45,7 +67,7 @@ const safeVideos = new Set(["video/mp4", "video/webm", "video/ogg"]);
 
 export function buildApp(
   config: AppConfig,
-  options: { runtime?: AgentRuntime; store?: Store } = {},
+  options: { runtime?: AgentRuntime; store?: Store; processors?: MemoryProcessors; features?: LocalFeatures } = {},
 ) {
   const app = Fastify({
     logger: false,
@@ -53,11 +75,49 @@ export function buildApp(
     requestTimeout: 0,
   });
   const store = options.store || new Store(config.dataDir);
-  let runtime = options.runtime || new PiRuntime(config, store);
+  const featureWorker = options.features || (config.localProcessor ? new LocalMemoryProcessor(config.localProcessor) : undefined);
+  const features = new MemoryFeatureService(store, featureWorker);
+  const assetIndex = new AssetIndexService(store, features);
+  const evidence = new EvidenceService(store, features);
+  store.work.queries.features = features;
+  const events = new MemoryEvents(store);
+  let models = new ModelAccess(config);
+  let processors = options.processors || new PiMemoryProcessors(config, models);
+  const imports = new MemoryImports(store, config, () => processors);
+  const jobs = new TaskJobs(store);
+  const processing = new AssetProcessingService(store, config, imports);
+  const datasets = new DatasetService(store, () => processors);
+  jobs.register("memory-import", processing.driver());
+  jobs.register("memory-dataset", datasets.driver());
+  jobs.register("dataset-audit", datasets.audits.driver());
+  const businessTools = (id: string) => [...createMemoryTools(store, id), ...createMemoryCommandTools(store, id), ...createProcessingTools(store, processing, jobs, id),
+    ...createKnowledgeTools(store, events, id), ...createDatasetTools(store, datasets, jobs, id), ...createEvidenceTools(store, config, evidence, id)];
+  const capabilities = new CapabilityRegistry([
+    { catalog: generalToolCatalog, create: (id: string) => createGeneralTools(store, id) },
+    { catalog: memoryToolCatalog, create: businessTools },
+  ], () => capabilityStatuses(config, store, features));
+  let runtime = options.runtime || new PiRuntime(config, createPiHost(store, (id) => capabilities.tools(id)), models);
+  const resetRuntime = () => {
+    models = new ModelAccess(config);
+    processors = options.processors || new PiMemoryProcessors(config, models);
+    runtime = new PiRuntime(config, createPiHost(store, (id) => capabilities.tools(id)), models);
+    store.events.publish("processing.configuration-changed", "models", new Date().toISOString());
+  };
   let configuring = false;
-  const active = new Map<string, { cancelled: boolean; done: Promise<void> }>();
-  const workspace = new WorkspaceService(store, () => runtime);
-  const imports = new MemoryImports(store, config, () => runtime);
+  const intake = new AutomaticIntake(store, processing, () => configuring);
+  jobs.register("asset-intake", intake.driver());
+  jobs.register("asset-index", assetIndex.driver());
+  const active = new Map<string, { cancelled: boolean; done: Promise<void>; memoryEpoch: number }>();
+  const workspace = new WorkspaceService(store, () => runtime, jobs);
+  const captures = new MemoryCaptures(store, config, () => processors, () => configuring || workspace.busy() || active.size > 0 || imports.busy());
+  workspace.captures = captures;
+  jobs.register("memory-capture", captureJobs(store, captures));
+  jobs.register("memory-index", memoryIndexJobs(store, features));
+  store.events.subscribe("harness.context-invalidation", ["memory.invalidated"], async (event) => {
+    const epoch = Number(event.revision);
+    await workspace.invalidateMemory(epoch);
+    for (const [id, state] of active) if (state.memoryEpoch < epoch) { state.cancelled = true; await runtime.cancel(id); }
+  });
 
   app.register(multipart, {
     limits: { fileSize: config.uploadLimit, files: 1, fields: 1 },
@@ -126,14 +186,14 @@ export function buildApp(
         chat: config.providers.length > 0,
         assets: true,
         memory: true,
-        people: false,
+        people: true,
         training: false,
       },
     }),
   );
   app.get("/api/models", async () => config.publicModels);
   app.get("/api/tools", async () => ({
-    tools: [...generalToolCatalog, ...memoryToolCatalog],
+    tools: capabilities.catalog(),
   }));
   app.post<{ Params: { id: ProviderId }; Body: ConnectionUpdate }>(
     "/api/settings/providers/:id",
@@ -174,6 +234,7 @@ export function buildApp(
             contextWindow: { type: "integer", minimum: 8192, maximum: 2000000 },
             maxTokens: { type: "integer", minimum: 256, maximum: 128000 },
             reasoning: { type: "boolean" },
+            supportsImages: { type: "boolean" },
             thinkingLevel: {
               enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
             },
@@ -187,7 +248,8 @@ export function buildApp(
         workspace.busy() ||
         configuring ||
         harness.busy() ||
-        imports.busy()
+        imports.busy() ||
+        datasets.busy()
       )
         throw new UserFacingError(
           409,
@@ -196,6 +258,7 @@ export function buildApp(
         );
       configuring = true;
       try {
+        await captures.yieldToForeground();
         try {
           updateConnection(config, request.params.id, request.body);
         } catch {
@@ -206,7 +269,7 @@ export function buildApp(
           );
         }
         await runtime.close();
-        runtime = new PiRuntime(config, store);
+        resetRuntime();
         return config.publicModels;
       } finally {
         configuring = false;
@@ -316,6 +379,7 @@ export function buildApp(
       let complete!: () => void;
       const state = {
         cancelled: false,
+        memoryEpoch: store.memories.ledger.epoch,
         done: new Promise<void>((resolve) => {
           complete = resolve;
         }),
@@ -465,7 +529,9 @@ export function buildApp(
       return { asset };
     },
   );
-  app.post("/api/assets", async (request, reply) => {
+  app.post<{ Querystring: { processing?: "automatic" | "requested" } }>("/api/assets", { schema: { querystring: {
+    type: "object", additionalProperties: false, properties: { processing: { enum: ["automatic", "requested"] } },
+  } } }, async (request, reply) => {
     const part = await request.file();
     if (!part) throw new UserFacingError(400, "FILE_REQUIRED", "请选择文件。");
     const id = randomUUID();
@@ -514,7 +580,7 @@ export function buildApp(
         createdAt: new Date().toISOString(),
       };
       await rename(temporary, destination);
-      store.addAsset(asset);
+      store.addAsset(asset, { processing: request.query.processing || "automatic" });
       return reply.code(201).send({ asset });
     } catch (error) {
       await Promise.allSettled([
@@ -594,8 +660,9 @@ export function buildApp(
     async () => {
       configuring = true;
       try {
+        await captures.yieldToForeground();
         await runtime.close();
-        runtime = new PiRuntime(config, store);
+        resetRuntime();
       } finally {
         configuring = false;
       }
@@ -615,13 +682,30 @@ export function buildApp(
     store,
     imports,
     () => configuring || harness.busy(),
+    captures,
   );
+  registerKnowledgeRoutes(app, store, features, events);
+  registerDatasetRoutes(app, datasets);
+  registerProductRoutes(app, store, jobs, capabilities, evidence, processing);
   app.addHook("onReady", async () => {
+    store.events.start();
+    intake.wake();
+    assetIndex.start();
+    workspace.wake();
     imports.wake();
+    captures.wake();
+    features.start();
+    datasets.start();
   });
   app.addHook("preClose", async () => {
-    await imports.close();
+    await store.events.close();
+    await intake.close();
     await workspace.close();
+    await captures.close();
+    await imports.close();
+    await assetIndex.close();
+    await features.close();
+    await datasets.close();
     for (const [id, state] of active) {
       state.cancelled = true;
       await runtime.cancel(id);
@@ -630,6 +714,7 @@ export function buildApp(
   });
   app.addHook("onClose", async () => {
     await runtime.close();
+    jobs.close();
     store.close();
   });
   return app;

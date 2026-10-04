@@ -1,0 +1,131 @@
+{
+  "format": 1,
+  "processorVersion": 2,
+  "encoders": {
+    "text": {
+      "id": "intfloat/multilingual-e5-small",
+      "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "dimensions": 384,
+      "format": "onnx-qint8-avx512-vnni",
+      "license": "MIT",
+      "prefixes": {
+        "query": "query: ",
+        "passage": "passage: "
+      },
+      "maxTokens": 512,
+      "pooling": "attention-mask-mean-l2"
+    },
+    "image": {
+      "id": "google/siglip2-base-patch16-224",
+      "conversion": "onnx-community/siglip2-base-patch16-224-ONNX",
+      "revision": "ba1f3b0843f24bc5417d38e19c37b287d719b2f4",
+      "dimensions": 768,
+      "format": "onnx-int8",
+      "license": "Apache-2.0",
+      "maxTokens": 64,
+      "size": 224,
+      "pooling": "pooler-output-l2"
+    },
+    "face": {
+      "id": "opencv/SFace-YuNet",
+      "revision": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+      "dimensions": 128,
+      "format": "onnx-float32",
+      "license": {
+        "detector": "MIT",
+        "recognizer": "Apache-2.0"
+      },
+      "detectorThreshold": 0.9,
+      "minFacePixels": 32,
+      "maxFaces": 32,
+      "maxImageEdge": 1600,
+      "detectionScales": [320, 640, 1280]
+    }
+  },
+  "files": [
+    {
+      "path": "e5/model.onnx",
+      "url": "https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx/model_qint8_avx512_vnni.onnx",
+      "bytes": 118346824,
+      "sha256": "dd476dd0c2514e9b9be83aeb3853fac0763e0bdf4a71645407587d77c48a2d88"
+    },
+    {
+      "path": "e5/tokenizer.json",
+      "url": "https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx/tokenizer.json",
+      "bytes": 17082730,
+      "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+    },
+    {
+      "path": "siglip/text.onnx",
+      "url": "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4/onnx/text_model_int8.onnx",
+      "bytes": 283438275,
+      "sha256": "3a0603d3a00c05a80a6ded4743c16aaac7b1e62cdcc7e362e7ce418659b96400"
+    },
+    {
+      "path": "siglip/image.onnx",
+      "url": "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4/onnx/vision_model_int8.onnx",
+      "bytes": 94553333,
+      "sha256": "0dd31785a2713f1113ef2272472165c69d580473dae38d7b47568ac587795e70"
+    },
+    {
+      "path": "siglip/tokenizer.json",
+      "url": "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4/tokenizer.json",
+      "bytes": 34363039,
+      "sha256": "cb9140fae3ac5122c972d37adf83e1248471a38147ad76f8215c8872c6fd8322"
+    },
+    {
+      "path": "faces/detector.onnx",
+      "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "bytes": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+    },
+    {
+      "path": "faces/recognizer.onnx",
+      "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "bytes": 38696353,
+      "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
+    },
+    {
+      "path": "e5/config.json",
+      "url": "https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx/config.json",
+      "bytes": 653,
+      "sha256": "bbb7c1333fc4b3e27fbc9cd5d2070aabcc1d4dfb99917c3633e772f97545a6b6"
+    },
+    {
+      "path": "e5/tokenizer_config.json",
+      "url": "https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx/tokenizer_config.json",
+      "bytes": 443,
+      "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b"
+    },
+    {
+      "path": "siglip/config.json",
+      "url": "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4/config.json",
+      "bytes": 435,
+      "sha256": "e43a9f7692d3819886a82cb2097048258d444f123c67d37ec825f9345b019cf2"
+    },
+    {
+      "path": "siglip/preprocessor_config.json",
+      "url": "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4/preprocessor_config.json",
+      "bytes": 394,
+      "sha256": "9b36b57ebaf20f09bf4c22100ccc21877ea6bfe5aead0c00c59f8af8ccefacfc"
+    },
+    {
+      "path": "siglip/tokenizer_config.json",
+      "url": "https://huggingface.co/onnx-community/siglip2-base-patch16-224-ONNX/resolve/ba1f3b0843f24bc5417d38e19c37b287d719b2f4/tokenizer_config.json",
+      "bytes": 47240,
+      "sha256": "7c3a247599e741bceba1a3fe0285aea88d1044dc1fad2caa1e48cdd9fd25f630"
+    },
+    {
+      "path": "faces/DETECTOR_LICENSE",
+      "url": "https://raw.githubusercontent.com/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/LICENSE",
+      "bytes": 1085,
+      "sha256": "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958"
+    },
+    {
+      "path": "faces/RECOGNIZER_LICENSE",
+      "url": "https://raw.githubusercontent.com/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  ]
+}

@@ -21,7 +21,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Conversation, Project } from "@memory/contracts";
+import type { Artifact, Conversation, Project } from "@memory/contracts";
+import { productTasks } from "@/lib/product-tasks";
+import { Suggestion } from "@/components/ai-elements/suggestion";
 import {
   Archive,
   Check,
@@ -42,6 +44,9 @@ export function TaskLibrary({
   onTask,
   onNew,
   menu,
+  artifacts = [],
+  onArtifact,
+  onPrompt,
 }: {
   project?: Project;
   conversations: Conversation[];
@@ -50,14 +55,14 @@ export function TaskLibrary({
   onTask: (id: string) => void;
   onNew: () => void;
   menu: (conversation: Conversation) => ReactNode;
+  artifacts?: Artifact[];
+  onArtifact?: (id: string) => void;
+  onPrompt?: (text: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(20);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const tasks = conversations
-    .filter(
-      (item) => (item.projectId || "default") === (project?.id || "default"),
-    )
     .filter((item) =>
       filter === "archived"
         ? item.archived
@@ -79,6 +84,8 @@ export function TaskLibrary({
             创建任务
           </Button>
         </div>
+        {onPrompt && <div className="mb-6 flex flex-wrap gap-2">{productTasks.map((task) =>
+          <Suggestion key={task.label} suggestion={task.prompt} onClick={onPrompt}>{task.label}</Suggestion>)}</div>}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
           <Tabs
             value={filter}
@@ -158,6 +165,10 @@ export function TaskLibrary({
                       >
                         <span className="truncate">{item.title}</span>
                       </Button>
+                      {onArtifact && artifacts.filter((artifact) => artifact.conversationId === item.id).slice(-1).map((artifact) =>
+                        <Button key={artifact.id} size="sm" variant="link" className="max-w-full text-xs text-muted-foreground" onClick={() => onArtifact(artifact.id)}>
+                          <span className="truncate">{artifact.title}</span>
+                        </Button>)}
                     </TableCell>
                     <TableCell className="hidden text-right text-xs text-muted-foreground sm:table-cell">
                       {item.running

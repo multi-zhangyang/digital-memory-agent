@@ -80,6 +80,6 @@ E2E_PRODUCTION=1 pnpm test:e2e
 
 ## 文档与下一步
 
-当前实现与验收见 [Pi 工作台重构](docs/plans/0033-pi-workbench.md)：真实消息和工具流、会话树、持久工作区，以及素材整理、纠正、召回和训练文件交付。此前活动整理与恢复见[生活记忆 Agent](docs/plans/0032-living-memory-agent.md)。下一步围绕真实照片观察质量和复杂活动关联扩大独立对照；个人模型训练继续暂停。
+当前界面与验收见[会话布局重设计](docs/plans/0034-conversation-layout.md)：会话居中，成果按需展开，工作目录进入附件与工作区菜单，窄屏使用完整查看层。执行能力基线见 [Pi 工作台重构](docs/plans/0033-pi-workbench.md)：真实消息和工具流、会话树、素材整理、纠正、召回和训练文件交付。此前活动整理与恢复见[生活记忆 Agent](docs/plans/0032-living-memory-agent.md)。个人模型训练继续暂停。
 
 [产品定义](docs/product.md)描述核心任务，[架构](docs/architecture.md)描述模块边界，[文档索引](docs/README.md)汇总当前说明与历史记录，[第三方说明](THIRD_PARTY_NOTICES.md)记录依赖来源、许可和适配。

@@ -20,14 +20,8 @@ import {
   QueueList,
 } from "@/components/ai-elements/queue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +33,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -97,6 +92,7 @@ import {
   Archive,
   Brain,
   Clock3,
+  ChevronDown,
   Download,
   Database,
   FileText,
@@ -126,12 +122,14 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { WorkSurface, type SurfaceTab } from "./work-surface";
 import { SessionControls } from "./session-controls";
 import { TimelineHistory } from "./timeline-history";
 import { DatasetDeliveryPanel } from "./dataset-delivery";
 import { TaskLauncher } from "./task-launcher";
+import { ProjectMenu } from "./project-menu";
 import { WorkbenchComposer } from "./workbench-composer";
 import {
   WorkbenchNavigation,
@@ -207,10 +205,10 @@ const navItems = [
 export function Workspace() {
   return (
     <SidebarProvider
-      className="h-svh min-h-0"
+      className="h-svh min-h-0 overflow-hidden"
       style={
         {
-          "--sidebar-width": "15rem",
+          "--sidebar-width": "16rem",
           "--sidebar-width-icon": "3rem",
         } as CSSProperties
       }
@@ -222,27 +220,23 @@ export function Workspace() {
 
 function WorkspaceContent() {
   const { setOpenMobile } = useSidebar();
-  const mobile = useIsMobile(1024);
+  const mobile = useIsMobile(1280);
   const [nav, setNav] = useState<Navigation>(initialNavigation);
   const navRef = useRef(nav);
   navRef.current = nav;
   const { snapshot, setSnapshot, refreshVersion, configuration, projects, setProjects, harness, tools, ready, error, setError, refresh, refreshSnapshot } = useWorkbenchData();
   const [projectId, setProjectId] = useState("default");
-  const [projectOpen, setProjectOpen] = useState(true);
-  useEffect(() => { setProjectOpen(!mobile); }, [mobile]);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [surfaceExpanded, setSurfaceExpanded] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const [fileRequest, setFileRequest] = useState<{
-    sessionKey: string;
-    projectId: string;
-    path: string;
-    nonce: number;
-  } | null>(null);
+  const [surfaceRequest, setSurfaceRequest] = useState<{ sessionKey: string; tab: SurfaceTab } | null>(null);
   const mainPanel = usePanelRef();
   const [projectTab, selectProjectTab] = useState("files");
-  const [projectRequest, setProjectRequest] = useState(0);
-  const [deliveryRequest, setDeliveryRequest] = useState<(NonNullable<SurfaceTab["delivery"]> & { sessionKey: string }) | null>(null);
-  const setProjectTab = (tab: string) => { selectProjectTab(tab); setProjectRequest((n) => n + 1); };
+  const setProjectTab = (tab: string) => {
+    selectProjectTab(tab);
+    setSurfaceRequest({ sessionKey: draftKey, tab: { id: tab, view: tab } });
+  };
   const [reviewRunId, setReviewRunId] = useState("latest");
   const [reviewPath, setReviewPath] = useState<string | null>(null);
   useEffect(() => {
@@ -312,6 +306,7 @@ function WorkspaceContent() {
       setFolderOpen(true);
     } else if (key === "o" && event.shiftKey) {
       event.preventDefault();
+      setProjectOpen(false);
       navigate({ view: "chat", task: null, target: null, collection: null });
     } else if (key === "j" || (key === "g" && event.shiftKey)) {
       event.preventDefault();
@@ -330,6 +325,7 @@ function WorkspaceContent() {
   useEffect(() => {
     const readLocation = () => {
       const params = new URLSearchParams(window.location.search);
+      setProjectOpen(params.get("workspace") === "1");
       const view = params.get("view") as Page;
       const tab = params.get("panel") as InspectorTarget["tab"];
       setNav({
@@ -364,6 +360,13 @@ function WorkspaceContent() {
       window.removeEventListener("keydown", shortcut);
     };
   }, [refresh]);
+  useEffect(() => {
+    if (!mounted) return;
+    const url = new URL(window.location.href);
+    if (nav.view === "chat" && projectOpen) url.searchParams.set("workspace", "1");
+    else url.searchParams.delete("workspace");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  }, [mounted, nav, projectOpen]);
   useEffect(() => {
     if (
       !snapshot.conversations.some(
@@ -433,7 +436,10 @@ function WorkspaceContent() {
       setDraft({ ...sent, text: "", fileReferences: [] }, source);
   }
   const inspect = useCallback(
-    (target: InspectorTarget) => navigate({ target }),
+    (target: InspectorTarget) => {
+      setSurfaceRequest(null);
+      navigate({ target });
+    },
     [navigate],
   );
   const running = task.detail?.runs.find(
@@ -525,10 +531,7 @@ function WorkspaceContent() {
           method: "POST",
           body: JSON.stringify({ name: dialogTitle }),
         });
-        setProjectId(result.project.id);
-        localStorage.setItem("digital-memory.project", result.project.id);
-        navigate({ view: "chat", task: null, target: null });
-        setProjectOpen(true);
+        useProject(result.project);
       } else if (dialog.type === "collection")
         await api("/collections", {
           method: "POST",
@@ -555,6 +558,13 @@ function WorkspaceContent() {
     setOpenMobile(false);
     setFolderOpen(true);
   }
+  function selectProject(id: string) {
+    setProjectId(id);
+    localStorage.setItem("digital-memory.project", id);
+    setSurfaceRequest(null);
+    setProjectOpen(false);
+    navigate({ view: "chat", task: null, target: null, collection: null });
+  }
   function useProject(project: Project) {
     setProjects((current) =>
       current.some((item) => item.id === project.id)
@@ -563,7 +573,8 @@ function WorkspaceContent() {
     );
     setProjectId(project.id);
     localStorage.setItem("digital-memory.project", project.id);
-    setProjectTab("files");
+    selectProjectTab("files");
+    setSurfaceRequest({ sessionKey: "new-" + project.id, tab: { id: "files", view: "files" } });
     setProjectOpen(true);
     navigate({ view: "chat", task: null, target: null, collection: null });
   }
@@ -579,16 +590,16 @@ function WorkspaceContent() {
       target: { tab: "assets", id: ids.length === 1 ? ids[0] : undefined },
     });
   }
-  const taskMenu = (conversation: Conversation, label = "任务菜单") => (
+  const taskMenu = (conversation: Conversation, label = "任务菜单", trigger?: ReactNode) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
+        {trigger || <Button
           variant="ghost"
           size="icon-sm"
           aria-label={label + " " + conversation.title}
         >
           <MoreHorizontal />
-        </Button>
+        </Button>}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
@@ -700,10 +711,10 @@ function WorkspaceContent() {
     (run: Run) => void forkConversation(run.conversationId, run.entryId),
   );
   const openDelivery = useLatestCallback((runId: string, toolCallId: string) => {
-    setDeliveryRequest({ runId, toolCallId, sessionKey: draftKey });
+    setSurfaceRequest({ sessionKey: draftKey, tab: { id: "delivery:" + runId + ":" + toolCallId, view: "delivery", delivery: { runId, toolCallId } } });
     setProjectOpen(true); navigate({ view: "chat", target: null });
   });
-  const openFiles = useCallback(
+  const openFiles = useLatestCallback(
     (runId?: string, path?: string) => {
       setReviewRunId(runId || "latest");
       navigate({ target: null });
@@ -711,13 +722,12 @@ function WorkspaceContent() {
       setReviewPath(path || null);
       setProjectOpen(true);
     },
-    [navigate],
   );
   const openProjectFile = useLatestCallback((path: string) => {
     if (!project) return;
-    setFileRequest({ projectId: project.id, sessionKey: draftKey, path, nonce: Date.now() });
+    selectProjectTab("files");
+    setSurfaceRequest({ sessionKey: draftKey, tab: { id: "file:" + project.id + ":" + path, view: "files", file: { projectId: project.id, path, nonce: Date.now() } } });
     navigate({ view: "chat", target: null });
-    setProjectTab("files");
     setProjectOpen(true);
   });
   const openReference = useLatestCallback((ref: ProjectFileReference) => {
@@ -772,6 +782,7 @@ function WorkspaceContent() {
       });
       mainPanel.current?.expand();
       if (mobile) setProjectOpen(false);
+      setSurfaceExpanded(false);
       focusComposer();
       return true;
     },
@@ -780,8 +791,11 @@ function WorkspaceContent() {
     void task.refresh();
     void refresh();
   });
+  const projectMenu = <ProjectMenu project={project} projects={projects} onSelect={selectProject}
+    onOpenFolder={openProjectFolder} onCreate={() => { setDialog({ type: "project" }); setDialogTitle(""); }} />;
   const composer = ready ? (
     <WorkbenchComposer
+      projectMenu={projectMenu}
       key={draftKey}
       compact={!!nav.task}
       draftKey={draftKey}
@@ -912,6 +926,7 @@ function WorkspaceContent() {
     <ProjectWorkspace
       key={project.id}
       project={project}
+      visible={active}
       tab={surface.view || "files"}
       onOpenFile={(path) => openReference({ path })}
       reviewRunId={reviewRunId}
@@ -931,12 +946,17 @@ function WorkspaceContent() {
   ) : null;
   const inspector = nav.view === "chat" && project && (projectOpen || nav.target) ? (
     <WorkSurface key={nav.task || "new-" + project.id} sessionKey={nav.task || "new-" + project.id}
-      target={nav.target} projectView={projectTab} projectRequest={projectRequest} projectOpen={projectOpen} fileRequest={fileRequest?.sessionKey === draftKey ? fileRequest : null}
-      deliveryRequest={deliveryRequest?.sessionKey === draftKey ? deliveryRequest : null}
+      target={nav.target} request={surfaceRequest?.sessionKey === draftKey ? surfaceRequest.tab : null}
       assets={snapshot.assets} artifacts={snapshot.artifacts.filter((a) => a.conversationId === nav.task)}
       renderResource={renderResource} renderProject={renderProject}
-      onSelect={(surface) => { if (surface.target) navigate({ target: surface.target }); else { navigate({ target: null }); selectProjectTab(surface.view || "files"); setProjectOpen(true); } }}
-      onClose={() => { navigate({ target: null }); setProjectOpen(false); }} />
+      expanded={surfaceExpanded}
+      onExpand={mobile ? undefined : () => {
+        if (surfaceExpanded) mainPanel.current?.expand();
+        else mainPanel.current?.collapse();
+        setSurfaceExpanded(!surfaceExpanded);
+      }}
+      onSelect={(surface) => { setSurfaceRequest(null); if (surface.target) navigate({ target: surface.target }); else { navigate({ target: null }); selectProjectTab(surface.view || "files"); setProjectOpen(true); } }}
+      onClose={() => { setSurfaceRequest(null); navigate({ target: null }); setProjectOpen(false); focusComposer(); }} />
   ) : nav.target ? renderResource(nav.target, () => navigate({ target: null })) : null;
   const main =
     nav.view === "settings" ? (
@@ -1028,7 +1048,7 @@ function WorkspaceContent() {
               initial="instant"
               className="min-h-0 flex-1"
             >
-              <ConversationContent className="mx-auto w-full max-w-3xl gap-8 px-5 py-6 sm:px-6">
+              <ConversationContent className="mx-auto w-full max-w-3xl gap-10 px-5 py-8 sm:px-6">
                 <TimelineHistory hasMore={!!task.detail.page?.hasMore} loading={task.loadingMore}
                   version={(task.detail.page?.before || "") + task.detail.runs.length} onLoad={task.loadMore} />
                 <LegacyMessages messages={task.detail.legacyMessages} />
@@ -1065,7 +1085,7 @@ function WorkspaceContent() {
               </ConversationContent>
               <ConversationScrollButton />
             </AIConversation>
-            <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4 pt-3 sm:px-6">
+            <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-5 pt-3 sm:px-6">
               {!!queued.length && (
                 <Queue className="mb-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1109,7 +1129,6 @@ function WorkspaceContent() {
       </div>
     ) : (
       <TaskLauncher
-        project={project}
         composer={composer}
         onPrompt={(text) => {
           setDraft({ ...readDraft(draftKey, fallbackDraft), text });
@@ -1119,13 +1138,13 @@ function WorkspaceContent() {
             )
             ?.focus();
         }}
-        onOpenFolder={openProjectFolder}
       />
     );
 
   useEffect(() => {
     if (!inspector || mobile) {
       mainPanel.current?.expand();
+      setSurfaceExpanded(false);
     }
   }, [!!inspector, mobile, mainPanel]);
   const navigationActions = {
@@ -1139,6 +1158,8 @@ function WorkspaceContent() {
       }),
     ),
     onTask: useLatestCallback((id: string | null, projectId?: string) => {
+      setSurfaceRequest(null);
+      setProjectOpen(false);
       const nextProjectId =
         projectId ||
         (id
@@ -1151,16 +1172,10 @@ function WorkspaceContent() {
       setTaskFilter("recent");
       navigate({ view: "chat", task: id, target: null, collection: null });
     }),
-    onProject: useLatestCallback((id: string) => {
-      setProjectId(id);
-      localStorage.setItem("digital-memory.project", id);
-      navigate({ view: "chat", task: null, target: null, collection: null });
-    }),
     onCreateProject: useLatestCallback(() => {
       setDialog({ type: "project" });
       setDialogTitle("");
     }),
-    onOpenFolder: useLatestCallback(openProjectFolder),
     onCollection: useLatestCallback((id: string | null) =>
       navigate({ view: "assets", collection: id, target: null }),
     ),
@@ -1180,101 +1195,50 @@ function WorkspaceContent() {
       <WorkbenchNavigation
         view={nav.view}
         taskId={nav.task}
-        project={project}
-        projects={projects}
         conversations={snapshot.conversations}
         collections={snapshot.collections}
         collectionId={nav.collection}
         dark={dark}
         {...navigationActions}
       />
-      <SidebarInset className="h-svh min-w-0 overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background px-3 sm:px-4">
-          <div className="flex min-w-0 items-center gap-3">
+      <SidebarInset className="h-svh min-w-0 overflow-hidden md:h-[calc(100svh-1rem)]">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-2 px-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2">
             <SidebarTrigger aria-label="切换侧栏" />
-            <Separator orientation="vertical" className="h-4" />
-            <Breadcrumb className="min-w-0">
-              <BreadcrumbList className="flex-nowrap">
-                <BreadcrumbItem className="hidden text-xs text-muted-foreground sm:inline-flex">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 max-w-44 truncate px-1 text-xs font-normal text-muted-foreground"
-                        aria-label="选择项目文件夹"
-                        onClick={openProjectFolder}
-                      >
-                        <span className="truncate">
-                          {project?.name || "工作空间"}
-                        </span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-sm break-all">
-                      {project?.directory || "打开文件夹"}
-                    </TooltipContent>
-                  </Tooltip>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden sm:block" />
-                <BreadcrumbItem className="min-w-0">
-                  <BreadcrumbPage className="max-w-56 truncate text-sm font-medium">
-                    {nav.view === "chat" && nav.task
-                      ? task.detail?.presentation?.title || selectedConversation?.title || "任务"
-                      : nav.view === "settings"
-                        ? "设置"
-                        : nav.view === "chat"
-                          ? "新任务"
-                          : navItems.find((item) => item.id === nav.view)
-                              ?.label}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            {nav.view === "chat" && selectedConversation ? taskMenu(selectedConversation, "任务菜单", (
+              <Button variant="ghost" size="sm" className="min-w-0 max-w-40 sm:max-w-80"
+                aria-label={"任务菜单 " + selectedConversation.title}>
+                <span className="truncate">{task.detail?.presentation?.title || selectedConversation.title}</span>
+                <ChevronDown data-icon="inline-end" />
+              </Button>
+            )) : nav.view !== "chat" ? (
+              <h1 className="truncate text-sm font-medium">{nav.view === "settings" ? "设置" : nav.view === "tasks" ? "全部对话" : navItems.find((item) => item.id === nav.view)?.label}</h1>
+            ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
             {nav.view === "chat" && running && (
-              <span
-                role="status"
-                className="mr-2 hidden items-center gap-2 text-xs text-muted-foreground sm:flex"
-              >
-                <LoaderCircle className="size-3 animate-spin" />
+              <span role="status" className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
+                <LoaderCircle className="size-3.5 animate-spin" />
                 {running.stopRequestedAt ? "正在停止…" : running.status === "waiting" ? running.waitingFor === "jobs" ? "等待后台作业" : "等待确认" : ({ compacting: "压缩上下文", retrying: "重试连接", tools: "执行工具", generating: "生成中", settled: "整理结果" }[running.phase || "generating"])}
               </span>
             )}
-            {task.connection === "reconnecting" && (
-              <span role="status" className="text-xs text-muted-foreground">
-                重新连接…
-              </span>
+            {task.connection === "reconnecting" && <span role="status" className="text-xs text-muted-foreground">重新连接…</span>}
+            {!ready && <span role="status" className="text-xs text-muted-foreground">连接中</span>}
+            {nav.view === "chat" && latest?.usage && model && (
+              <div className="hidden sm:block">
+                <Context usedTokens={latest.usage.context} maxTokens={model.contextWindow}>
+                  <ContextTrigger aria-label="本轮上下文用量" size="sm" />
+                  <ContextContent>
+                    <ContextContentHeader />
+                    <div className="flex flex-col gap-1 p-3 text-xs text-muted-foreground">
+                      <p>最近一次模型请求</p>
+                      <p>输入 {latest.usage.input.toLocaleString()} · 缓存读取 {latest.usage.cacheRead.toLocaleString()}</p>
+                      <p>本次运行输出 {latest.usage.output.toLocaleString()}</p>
+                    </div>
+                  </ContextContent>
+                </Context>
+              </div>
             )}
-            {nav.view === "chat" && latest?.usage && model ? (
-              <Context
-                usedTokens={latest.usage.context}
-                maxTokens={model.contextWindow}
-              >
-                <ContextTrigger aria-label="本轮上下文用量" size="sm" />
-                <ContextContent>
-                  <ContextContentHeader />
-                  <div className="space-y-1 p-3 text-xs text-muted-foreground">
-                    <p>最近一次模型请求</p>
-                    <p>
-                      输入 {latest.usage.input.toLocaleString()} · 缓存读取{" "}
-                      {latest.usage.cacheRead.toLocaleString()}
-                    </p>
-                    <p>本次运行输出 {latest.usage.output.toLocaleString()}</p>
-                  </div>
-                </ContextContent>
-              </Context>
-            ) : (
-              <span
-                className="mr-2 text-xs text-muted-foreground"
-                aria-label={ready ? "服务已连接" : "服务未连接"}
-              >
-                {ready ? "" : "连接中"}
-              </span>
-            )}
-            {selectedConversation &&
-              nav.view === "chat" &&
-              taskMenu(selectedConversation)}
             {nav.task && nav.view === "chat" && model && <SessionControls key={nav.task} conversationId={nav.task}
               busy={!!running || !!queued.length} revision={latest?.finishedAt}
               onNavigate={async (text) => {
@@ -1282,56 +1246,43 @@ function WorkspaceContent() {
                 await task.refresh(true); await refreshSnapshot();
               }} onFork={(entryId) => forkConversation(nav.task!, entryId)} />}
             {nav.view === "chat" && (
-              <>
-                <Separator orientation="vertical" className="mx-1 h-4" />
-                {[
-                  {
-                    tab: "files",
-                    label: "项目文件",
-                    aria: "切换工作区",
-                    icon: FolderOpen,
-                  },
-                  {
-                    tab: "changes",
-                    label: "文件改动",
-                    aria: "审阅文件改动",
-                    icon: GitCompareArrows,
-                  },
-                  {
-                    tab: "terminal",
-                    label: "终端输出",
-                    aria: "打开终端输出",
-                    icon: TerminalSquare,
-                  },
-                ].map(({ tab, label, aria, icon: Icon }) => (
-                  <Tooltip key={tab}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={
-                          projectOpen && !nav.target && projectTab === tab
-                            ? "secondary"
-                            : "ghost"
-                        }
-                        size="icon-sm"
-                        aria-label={aria}
-                        className="text-muted-foreground"
-                        onClick={() => {
-                          navigate({ target: null });
-                          setProjectOpen(
-                            projectTab === tab && projectOpen && !nav.target
-                              ? false
-                              : true,
-                          );
-                          setProjectTab(tab);
-                        }}
-                      >
-                        <Icon className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{label}</TooltipContent>
-                  </Tooltip>
-                ))}
-              </>
+              <ButtonGroup>
+                <Button variant={inspector ? "secondary" : "ghost"} size="sm" aria-label="切换工作区" aria-expanded={!!inspector}
+                  onClick={() => {
+                    setSurfaceRequest(null);
+                    if (inspector) { navigate({ target: null }); setProjectOpen(false); }
+                    else setProjectOpen(true);
+                  }}>
+                  <PanelRight data-icon="inline-start" /><span className="hidden sm:inline">工作区</span>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" aria-label="工作区选项"><ChevronDown /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52" onCloseAutoFocus={(event) => {
+                    if (document.activeElement?.matches("input, textarea") || folderOpen || filePickerOpen || dialog) event.preventDefault();
+                  }}>
+                    <DropdownMenuGroup>
+                      {[
+                        { tab: "files", label: "项目文件", icon: FolderOpen },
+                        { tab: "changes", label: "审阅文件改动", icon: GitCompareArrows },
+                        { tab: "terminal", label: "打开终端输出", icon: TerminalSquare },
+                      ].map(({ tab, label, icon: Icon }) => (
+                        <DropdownMenuItem key={tab} onSelect={() => {
+                          navigate({ target: null }); setProjectTab(tab); setProjectOpen(true);
+                        }}><Icon />{label}</DropdownMenuItem>
+                      ))}
+                      <DropdownMenuItem onSelect={() => setFilePickerOpen(true)}><Search />查找文件</DropdownMenuItem>
+                    </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      {projectMenu}
+                      <DropdownMenuItem onSelect={openProjectFolder}><FolderOpen />打开本地文件夹</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={navigationActions.onCreateProject}><SquarePen />新建工作目录</DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </ButtonGroup>
             )}
           </div>
         </header>
@@ -1349,8 +1300,8 @@ function WorkspaceContent() {
             <ResizablePanelGroup orientation="horizontal">
               <ResizablePanel
                 id="main"
-                defaultSize="50%"
-                minSize="35%"
+                defaultSize="46%"
+                minSize="400px"
                 collapsible
                 collapsedSize="0%"
                 panelRef={mainPanel}
@@ -1363,8 +1314,8 @@ function WorkspaceContent() {
                   <ResizableHandle />
                   <ResizablePanel
                     id="inspector"
-                    defaultSize="50%"
-                    minSize="35%"
+                    defaultSize="54%"
+                    minSize="440px"
                   >
                     {inspector}
                   </ResizablePanel>
@@ -1377,6 +1328,7 @@ function WorkspaceContent() {
         open={mobile && !!inspector}
         onOpenChange={(open) => {
           if (!open) {
+            setSurfaceRequest(null);
             navigate({ target: null });
             setProjectOpen(false);
           }
@@ -1384,7 +1336,7 @@ function WorkspaceContent() {
       >
         <SheetContent
           side="right"
-          className="w-full gap-0 p-0 sm:max-w-lg"
+          className="w-full max-w-none gap-0 p-0 sm:max-w-none"
           showCloseButton={false}
         >
           <SheetHeader className="sr-only">

@@ -282,7 +282,7 @@ export const RunThread = memo(function RunThread({
       data-run-status={run.status}
     >
       {!run.window?.start && (!branch || !run.inputEntryId || branch.has(run.inputEntryId)) && <Message from="user" className="ml-auto max-w-[90%]">
-        <MessageContent className="rounded-2xl px-4 py-3">
+        <MessageContent className="rounded-2xl px-4 py-3 text-base">
           {run.text && <p className="whitespace-pre-wrap leading-7">{run.text}</p>}
           {!!run.fileReferences?.length && (
             <div
@@ -472,7 +472,7 @@ export const RunThread = memo(function RunThread({
                   </span>
                   <ArrowUpRight className="size-3.5 text-muted-foreground" />
                 </div>
-                <ArtifactDescription className="line-clamp-2 text-xs font-normal leading-5">
+                <ArtifactDescription className="line-clamp-2 text-sm font-normal leading-6">
                   {artifact.content.replace(/[#*`]/g, "").trim().slice(0, 180)}
                 </ArtifactDescription>
               </Button>

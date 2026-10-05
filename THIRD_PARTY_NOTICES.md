@@ -149,6 +149,12 @@ Context、Artifact 和 Attachments。工具参数流、最终消息校正、父�
 共享模块，没有新增样式系统。Web 扩展 UI 使用公开 Theme 作为文字格式兼容器，
 剥离终端 ANSI 格式；任意 TUI 组件仍明确不支持。
 
+会话居中布局组合 shadcn Sidebar 的 inset 变体、DropdownMenu、Resizable 和 Sheet；
+项目选择使用官方子菜单，窄屏工作区使用全宽 Sheet。输入、消息及交付文件继续组合
+AI Elements PromptInput、Message、Artifact 和 Attachments，仅调整应用层的布局和阅读尺寸。
+工作区明确打开与恢复标签的状态由应用层管理；菜单关闭时保留已进入文本框的输入焦点。
+这次布局重设计没有替换上游基础控件或新增视觉样式系统。
+
 Agent first 适配继续组合官方 PromptInput、Attachments、Task 和 Tool 组件。
 单文件上传重试使用 shadcn Alert / Button；仅附件任务保留真实附件与空用户正文，
 逐素材覆盖和训练文件下载来自实际后台结果。应用层 Markdown 链接适配允许
@@ -208,6 +214,10 @@ Copyright 2025 Pierre Computer Company
 Licensed under the Apache License, Version 2.0. The dependency includes the full
 license in `@pierre/diffs/LICENSE.md`. The application uses its React `FileDiff`
 component and built-in styles without modifying the library source.
+
+应用层在首次打开差异查看器时，通过公开的 `preloadHighlighter` 接口加载内置主题。
+这避免了 1.3.6 在开发模式 StrictMode 重新挂载时，将尚未填入内容的 `<pre>`
+误当成已完成渲染而显示空白；仍然按需加载，未修改上游组件或关闭 StrictMode。
 
 https://www.apache.org/licenses/LICENSE-2.0
 

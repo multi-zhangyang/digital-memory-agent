@@ -67,9 +67,9 @@ export function DatasetDeliveryPanel({ runId, toolCallId, active, refreshVersion
       {!delivery && !error && <Skeleton className="h-40" />}
       {delivery && <>
         {!current && !loading && <Button size="sm" variant="outline" className="self-start" onClick={() => onRequest(`重新核验并交付数据集 ${delivery.datasetId}，检查来源变化与训练文件内容。`)}>交给 Agent 核验</Button>}
-        <Attachments variant="list">{delivery.files.filter((file) => datasetDownloadUrl(file.href)).map((file) => <Attachment key={file.kind} className="w-full" data={{ id: file.href, type: "file", mediaType: "application/octet-stream", filename: file.name, url: file.href }}>
-          <Button variant="ghost" className="h-auto w-full justify-start gap-3 p-2" disabled={!current || loading || !!error || !!downloading}
-            onClick={() => void download(file)} title={"SHA-256: " + file.sha256}><AttachmentPreview /><AttachmentInfo />
+        <Attachments variant="list" className="gap-2">{delivery.files.filter((file) => datasetDownloadUrl(file.href)).map((file) => <Attachment key={file.kind} className="w-full p-0" data={{ id: file.href, type: "file", mediaType: "application/octet-stream", filename: file.name, url: file.href }}>
+          <Button variant="ghost" className="h-auto w-full justify-start gap-3 p-3" disabled={!current || loading || !!error || !!downloading}
+            onClick={() => void download(file)} title={"SHA-256: " + file.sha256}><AttachmentPreview className="size-8" /><AttachmentInfo className="text-left" />
               <span className="ml-auto shrink-0 text-xs text-muted-foreground">{file.records === undefined ? "" : file.records + " 条 · "}{formatBytes(file.bytes)}</span>
               {downloading === file.kind ? <LoaderCircle className="animate-spin" /> : <Download />}
           </Button>

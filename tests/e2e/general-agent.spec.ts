@@ -20,14 +20,16 @@ test("general workspace creates a project, imports data, executes a script and r
 }) => {
   await setup(request);
   await page.goto("/");
-  await page.getByRole("button", { name: "创建项目", exact: true }).click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建工作目录", exact: true }).click();
   await page.getByLabel("项目名称").fill("数据工作区");
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "保存", exact: true })
     .click();
   await expect(page.getByTestId("project-workspace")).toBeVisible();
-  await expect(page.getByRole("button", { name: "选择项目文件夹", exact: true })).toHaveText("数据工作区");
+  const created = (await (await request.get("/api/projects")).json()).projects.find((item: { name: string }) => item.name === "数据工作区");
+  await expect(page.getByTestId("workspace-directory")).toHaveText(created.directory);
   await page.getByLabel("导入项目文件").setInputFiles({
     name: "input.csv",
     mimeType: "text/csv",
@@ -66,7 +68,8 @@ test("general workspace creates a project, imports data, executes a script and r
     page.getByRole("button", { name: "思考过程" }).first(),
   ).toBeVisible();
   const pane = page.getByTestId("project-workspace").filter({ visible: true });
-  await page.getByRole("button", { name: "审阅文件改动", exact: true }).click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "审阅文件改动", exact: true }).click();
   await expect(
     pane.getByRole("option", { name: "result.json 新增", exact: true }),
   ).toBeVisible();
@@ -79,7 +82,8 @@ test("general workspace creates a project, imports data, executes a script and r
     fullPage: true,
     animations: "disabled",
   });
-  await page.getByRole("button", { name: "打开终端输出", exact: true }).click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "打开终端输出", exact: true }).click();
   await expect(pane.getByText("PROCESSING", { exact: false })).toBeVisible();
   await page.getByTestId("work-surface").getByRole("tab", { name: "文件", exact: true }).click();
   await pane.getByText("result.json", { exact: true }).first().click();
@@ -90,8 +94,12 @@ test("general workspace creates a project, imports data, executes a script and r
   await expect(page.getByTestId("work-surface").getByRole("tab", { name: "input.csv", exact: true })).toHaveAttribute("data-state", "active");
   await page.getByTestId("work-surface").getByRole("tab", { name: "result.json", exact: true }).click();
   await expect(page.getByLabel("文件内容")).toHaveValue('{"total":8}');
+  await page.getByRole("button", { name: "关闭工作区", exact: true }).click();
+  await page.getByRole("button", { name: "切换工作区", exact: true }).click();
+  await expect(page.getByLabel("文件内容")).toHaveValue('{"total":8}');
   await pane.getByRole("button", { name: "保存", exact: true }).click();
-  await page.getByRole("button", { name: "审阅文件改动", exact: true }).click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "审阅文件改动", exact: true }).click();
   await pane
     .getByRole("button", { name: "回退 result.json", exact: true })
     .click();
@@ -179,9 +187,9 @@ test("frontend approval blocks execution and native steering reaches an active P
   await page.setViewportSize({ width: 390, height: 844 });
   const stop = page.getByRole("button", { name: "停止任务", exact: true });
   await expect(stop).toBeInViewport();
-  await expect(
-    page.getByRole("button", { name: "打开终端输出", exact: true }),
-  ).toBeInViewport();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "打开终端输出", exact: true })).toBeInViewport();
+  await page.keyboard.press("Escape");
   const stopBounds = await stop.boundingBox();
   expect(stopBounds!.x + stopBounds!.width).toBeLessThanOrEqual(390);
   await page.screenshot({

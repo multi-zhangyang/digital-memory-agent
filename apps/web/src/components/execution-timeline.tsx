@@ -69,7 +69,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({ run, activeEn
   };
   return <div className="flex min-w-0 flex-col gap-6" data-testid="execution-timeline">
     {groups.map((group) => <Message key={group.id} from={group.role} className="max-w-full" data-message-id={group.id}>
-      <MessageContent className="flex w-full min-w-0 flex-col gap-4">
+      <MessageContent className="flex w-full min-w-0 flex-col gap-4 text-base leading-7">
         {group.role === "user" && group.marker?.text && <p className="whitespace-pre-wrap">{group.marker.text}</p>}
         {group.parts.filter((part) => part.type !== "tool" || !part.parentToolCallId || !toolIds.has(part.parentToolCallId)).map((part, index) =>
           renderPart(part, index, active && group.marker?.state === "streaming" && part === group.parts.at(-1)))}

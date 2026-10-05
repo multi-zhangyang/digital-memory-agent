@@ -60,9 +60,9 @@ test("all-task list spans work directories, searches older tasks and restores an
   await request.patch("/api/conversations/" + other.id, { data: { title: "另一个工作目录的任务" } });
   await page.goto("/");
   await page.getByLabel("任务指令", { exact: true }).waitFor();
-  await page
-    .getByRole("button", { name: "打开项目 任务管理", exact: true })
-    .click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "工作目录", exact: true }).hover();
+  await page.getByRole("menuitemradio", { name: "打开项目 任务管理", exact: true }).click();
   await page.getByRole("button", { name: "所有任务", exact: true }).click();
   const launcher = page.getByTestId("task-library");
   await launcher.getByRole("tab", { name: "已归档", exact: true }).click();
@@ -231,7 +231,7 @@ test("historical changes open the correct run, export a real patch and preserve 
     .first()
     .getByRole("button", { name: "审阅 result.json", exact: true })
     .click();
-  const pane = page.getByTestId("project-workspace");
+  const pane = page.getByTestId("project-workspace").filter({ visible: true });
   await expect(
     pane.getByRole("combobox", { name: "选择变更轮次" }),
   ).toContainText("第一轮");
@@ -277,8 +277,7 @@ test("historical changes open the correct run, export a real patch and preserve 
       })
     ).ok(),
   ).toBe(true);
-  await pane.getByRole("tab", { name: "文件", exact: true }).click();
-  await pane.getByRole("button", { name: "刷新项目文件", exact: true }).click();
+  await page.getByTestId("work-surface").getByRole("tab", { name: "文件", exact: true }).click();
   await pane.getByText("preview.json", { exact: true }).click();
   await expect(
     pane.locator('pre span[style*="--shiki-dark"]').first(),
@@ -287,7 +286,7 @@ test("historical changes open the correct run, export a real patch and preserve 
   await page
     .getByLabel("文件内容", { exact: true })
     .fill(original.replace("before", "after!"));
-  await pane.getByRole("button", { name: "关闭项目面板", exact: true }).click();
+  await page.getByRole("button", { name: "关闭工作区", exact: true }).click();
   await page.getByRole("button", { name: "切换工作区", exact: true }).click();
   await expect(page.getByLabel("文件内容", { exact: true })).toHaveValue(
     original.replace("before", "after!"),

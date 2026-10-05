@@ -1,13 +1,15 @@
 # 文档索引
 
-开始新任务时先读[最新进展：Pi 工作台重构](plans/0033-pi-workbench.md)，再结合[生活记忆 Agent](plans/0032-living-memory-agent.md)及产品定义、架构。当前工作覆盖真实 Pi 消息、会话树、持久工作区与训练文件交付；训练继续暂停。本机工作台 3002、Agent 4313，运行与验证记录见当前阶段；历史计划里的“当前”“下一步”指各自记录时点。
+开始新任务时先读[最新进展：会话布局重设计](plans/0034-conversation-layout.md)，再结合 [Pi 工作台基线](plans/0033-pi-workbench.md)、产品定义与架构。当前界面以会话为中心，文件、成果及来源按需展开；真实 Pi 消息、会话树和数字记忆交付能力继续保留。训练继续暂停。本机工作台 3002、Agent 4313，运行与验证记录见当前阶段；历史计划里的“当前”“下一步”指各自记录时点。
 
 | 文档 | 用途 |
 | --- | --- |
 | [README](../README.md) | 启动、配置、主要任务与能力边界 |
 | [收工交接](plans/2026-10-05-handoff.md) | 明天的起点、收尾验证与清理后的恢复位置 |
-| [Pi 工作台重构](plans/0033-pi-workbench.md) | 当前消息、会话、工作区及核心任务验收 |
-| [下一阶段讨论](plans/2026-10-05-next-discussion.md) | 当前基线、核心瓶颈与待确定的下一步范围 |
+| [会话布局重设计](plans/0034-conversation-layout.md) | 当前布局、恢复行为与界面验收 |
+| [Agent 平台界面研究](design/0003-conversation-centered-workbench.md) | Exa ultra 调研、官方截图与布局取舍 |
+| [Pi 工作台重构](plans/0033-pi-workbench.md) | 消息、会话及数字记忆核心任务基线 |
+| [下一阶段讨论草案](plans/2026-10-05-next-discussion.md) | UI 改版前的技术讨论，保留为后续参考 |
 | [生活记忆 Agent 与工作台](plans/0032-living-memory-agent.md) | 活动整理、恢复机制与此前界面验收 |
 | [来源作答与质量对照](plans/0031-dataset-answerability.md) | 保留的训练资料质量实现、真实错误与成本 |
 | [记忆质量技术取舍](design/0002-memory-quality-bottlenecks.md) | Exa 一手研究、瓶颈分析与采用边界 |
@@ -29,6 +31,7 @@
 | 31：来源作答与质量测量 | [来源作答与训练题质量对照](plans/0031-dataset-answerability.md) |
 | 32：生活记忆 Agent 与工作台 | [活动整理、持续回忆、Pi 恢复与界面](plans/0032-living-memory-agent.md) |
 | 33：Pi 工作台 | [消息投影、会话树、持久工作区与真实任务交付](plans/0033-pi-workbench.md) |
+| 34：会话布局 | [会话居中、按需工作区与窄屏查看层](plans/0034-conversation-layout.md) |
 
 [工作台设计研究](design/0001-agent-workspace-research.md)保留设计依据。照片误识别、问题生成及审阅依据错误均保留在相应阶段，不因后续重构或界面改进被改写成成功。
 

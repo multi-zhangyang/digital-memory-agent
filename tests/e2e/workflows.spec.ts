@@ -52,9 +52,9 @@ test("inline file and command completion preserves focus and sends real project 
 }) => {
   const project = await setup(request, "文件上下文");
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "打开项目 文件上下文", exact: true })
-    .click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "工作目录", exact: true }).hover();
+  await page.getByRole("menuitemradio", { name: "打开项目 文件上下文", exact: true }).click();
   const input = page.getByLabel("任务指令", { exact: true });
   await input.fill("检查 @cont");
   const suggestions = page.getByRole("listbox", { name: "文件引用建议" });
@@ -99,7 +99,7 @@ test("inline file and command completion preserves focus and sends real project 
   await picker.getByLabel("搜索项目文件").fill("config");
   await picker.getByLabel("搜索项目文件").press("Enter");
   await expect(picker).not.toBeVisible();
-  await expect(page.getByTestId("project-workspace")).toContainText(
+  await expect(page.getByTestId("project-workspace").filter({ visible: true })).toContainText(
     'export const name = "digital memory";',
   );
   await expect(input).toHaveValue("检查 请按约定分析");
@@ -178,7 +178,7 @@ test("review comments include their historical file version, preserve draft text
   await page
     .getByRole("button", { name: "审阅 result.json", exact: true })
     .click();
-  const pane = page.getByTestId("project-workspace");
+  const pane = page.getByTestId("project-workspace").filter({ visible: true });
   await expect(
     pane.getByRole("region", { name: "文件差异 result.json" }),
   ).toBeVisible();
@@ -209,8 +209,8 @@ test("review comments include their historical file version, preserve draft text
   await pane
     .getByRole("checkbox", { name: "已查看 result.json", exact: true })
     .check();
-  await pane.getByRole("button", { name: "展开工作区" }).click();
-  await expect(pane.getByRole("button", { name: "恢复分栏" })).toBeVisible();
+  await page.getByRole("button", { name: "展开工作区", exact: true }).click();
+  await expect(page.getByRole("button", { name: "恢复分栏", exact: true })).toBeVisible();
   await page.screenshot({
     path: "test-results/workflows-review-expanded.png",
     animations: "disabled",
@@ -276,9 +276,9 @@ test("project navigation and command actions work on desktop and mobile without 
   });
   await page.goto("/");
   const input = page.getByLabel("任务指令", { exact: true });
-  await page
-    .getByRole("button", { name: "打开项目 项目一", exact: true })
-    .click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "工作目录", exact: true }).hover();
+  await page.getByRole("menuitemradio", { name: "打开项目 项目一", exact: true }).click();
   const row = await page
     .getByRole("button", { name: title, exact: true })
     .boundingBox();
@@ -289,14 +289,14 @@ test("project navigation and command actions work on desktop and mobile without 
     sidebarBounds!.x + sidebarBounds!.width,
   );
   await input.fill("项目一未发送的指令");
-  await page
-    .getByRole("button", { name: "在 项目二 新建任务", exact: true })
-    .click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "工作目录", exact: true }).hover();
+  await page.getByRole("menuitemradio", { name: "打开项目 项目二", exact: true }).click();
   await expect(input).toHaveValue("");
   await input.fill("项目二未发送的指令");
-  await page
-    .getByRole("button", { name: "打开项目 项目一", exact: true })
-    .click();
+  await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+  await page.getByRole("menuitem", { name: "工作目录", exact: true }).hover();
+  await page.getByRole("menuitemradio", { name: "打开项目 项目一", exact: true }).click();
   await expect(input).toHaveValue("项目一未发送的指令");
   await page.keyboard.press("Control+k");
   await page.getByPlaceholder("搜索任务、资料、结果、记忆…").fill("快速打开");
@@ -324,11 +324,8 @@ test("project navigation and command actions work on desktop and mobile without 
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "切换侧栏", exact: true }).click();
-  const sidebar = page.getByRole("dialog");
-  await sidebar
-    .getByRole("button", { name: "打开项目 项目二", exact: true })
-    .click();
-  await expect(sidebar).not.toBeVisible();
+  await page.getByRole("button", { name: "添加附件与工具", exact: true }).click();
+  await page.getByRole("menuitem", { name: "工作目录", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "打开项目 项目二", exact: true }).click();
   await expect(input).toHaveValue("项目二未发送的指令");
 });

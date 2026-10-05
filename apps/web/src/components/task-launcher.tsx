@@ -1,68 +1,30 @@
 "use client";
 
 import { Suggestion } from "@/components/ai-elements/suggestion";
-import { Button } from "@/components/ui/button";
-import type { Project } from "@memory/contracts";
-import { ChevronDown, FolderOpen } from "lucide-react";
+import { Database, Images, Search, SquarePen } from "lucide-react";
 import { productTasks } from "@/lib/product-tasks";
 import type { ReactNode } from "react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
-export function TaskLauncher({
-  project,
-  composer,
-  onPrompt,
-  onOpenFolder,
-}: {
-  project?: Project;
+const taskIcons = [Images, Search, SquarePen, Database];
+
+export function TaskLauncher({ composer, onPrompt }: {
   composer: ReactNode;
   onPrompt: (text: string) => void;
-  onOpenFolder: () => void;
 }) {
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto pb-16"
-      data-testid="task-launcher"
-    >
-      <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-10">
-        <div className="mb-7 flex flex-col items-start gap-3 px-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onOpenFolder}
-                aria-label="选择工作目录"
-                className="h-7 max-w-full gap-2 px-0 text-xs font-normal text-muted-foreground hover:bg-transparent"
-              >
-                <FolderOpen className="size-3.5" />
-                <span className="truncate">{project?.id === "default" ? "工作目录（可选）" : project?.name || "工作目录（可选）"}</span>
-                <ChevronDown className="size-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-sm break-all">
-              {project?.directory || "打开文件夹"}
-            </TooltipContent>
-          </Tooltip>
-          <h1 className="text-2xl font-medium tracking-tight">新任务</h1>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto pb-12 sm:pb-24" data-testid="task-launcher">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-7 px-4 py-8 sm:px-6">
+        <h1 className="text-center text-3xl font-medium tracking-tight">新对话</h1>
         {composer}
-        <div className="mt-5 flex flex-wrap gap-2">
-          {productTasks.map(({ label, prompt }) => (
-            <Suggestion
-              key={label}
-              variant="ghost"
-              suggestion={prompt}
-              onClick={onPrompt}
-              className="h-9 gap-2 px-3"
-            >
-              {label}
-            </Suggestion>
-          ))}
+        <div className="flex flex-wrap justify-center gap-2">
+          {productTasks.slice(1).map(({ label, prompt }, index) => {
+            const Icon = taskIcons[index];
+            return (
+              <Suggestion key={label} suggestion={prompt} onClick={onPrompt}>
+                <Icon data-icon="inline-start" />{label}
+              </Suggestion>
+            );
+          })}
         </div>
       </div>
     </div>

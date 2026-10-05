@@ -103,7 +103,7 @@ import {
   File,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Queue, QueueItem, QueueItemContent, QueueList } from "@/components/ai-elements/queue";
 
 interface Props {
@@ -126,6 +126,7 @@ interface Props {
   onSteer?: (mode?: "steer" | "followUp") => Promise<void>;
   commands?: string[];
   projectId?: string;
+  projectMenu?: ReactNode;
   onOpenFile?: (ref: ProjectFileReference) => void;
   onRecall?: () => void;
 }
@@ -159,6 +160,7 @@ export function WorkbenchComposer({
   onSteer,
   commands = [],
   projectId,
+  projectMenu,
   onOpenFile,
   onRecall,
 }: Props) {
@@ -436,7 +438,7 @@ export function WorkbenchComposer({
           <PromptInput
             maxFiles={0}
             resetOnSubmit={false}
-            className="[&>[data-slot=input-group]]:rounded-xl [&>[data-slot=input-group]]:border-border [&>[data-slot=input-group]]:bg-muted/20 [&>[data-slot=input-group]]:shadow-xs [&>[data-slot=input-group]]:has-[[data-slot=input-group-control]:focus-visible]:ring-1"
+            className="[&>[data-slot=input-group]]:rounded-2xl"
             onSubmit={async () => {
               if (uploadLock.current || submitting) return;
               const localCommand = [
@@ -546,13 +548,13 @@ export function WorkbenchComposer({
                 placeholder={
                   running
                     ? "补充指令，或安排下一项任务…"
-                    : "描述任务，@ 引用文件，/ 选择命令"
+                    : "描述任务，或添加资料…"
                 }
                 value={draft.text}
                 className={
                   compact
-                    ? "min-h-16 max-h-48 px-4 pb-3 pt-4 text-base leading-6 md:text-sm"
-                    : "min-h-28 max-h-60 px-5 pb-4 pt-5 text-base leading-7 md:text-sm"
+                    ? "min-h-20 max-h-48 px-4 pb-3 pt-4 text-base leading-7 md:text-base"
+                    : "min-h-32 max-h-64 px-5 pb-4 pt-5 text-base leading-7 md:text-base"
                 }
                 onChange={(event) => {
                   patch({ text: event.target.value });
@@ -612,17 +614,16 @@ export function WorkbenchComposer({
                 <span className="truncate">{uploading}</span>
               </div>
             )}
-            <PromptInputFooter className="gap-2 px-3 pb-2.5">
+            <PromptInputFooter className="gap-2 px-3 pb-3">
               <PromptInputTools className="min-w-0 gap-1">
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="添加附件与工具"
-                    className="rounded-lg text-muted-foreground"
                   />
                   <PromptInputActionMenuContent
                     className="w-52"
                     onCloseAutoFocus={(event) => {
-                      if (dialog) event.preventDefault();
+                      if (dialog || document.activeElement?.matches("input, textarea")) event.preventDefault();
                     }}
                   >
                     <PromptInputActionMenuItem
@@ -655,6 +656,7 @@ export function WorkbenchComposer({
                         @
                       </span>
                     </PromptInputActionMenuItem>
+                    {projectMenu}
                     <DropdownMenuSeparator />
                     <PromptInputActionMenuItem
                       onSelect={() => setDialog("commands")}
@@ -679,10 +681,10 @@ export function WorkbenchComposer({
                       <PromptInputButton
                         aria-label="选择对话模型"
                         disabled={continuing}
-                        className="h-8 min-w-0 max-w-40 shrink gap-1.5 px-2 text-xs font-medium @md:max-w-52"
+                        className="min-w-0 max-w-40 shrink gap-1.5 @md:max-w-52"
                       >
                         <span className="truncate">{model.name}</span>
-                        <ChevronDown className="size-3 text-muted-foreground" />
+                        <ChevronDown data-icon="inline-end" />
                       </PromptInputButton>
                     </ModelSelectorTrigger>
                     <ModelSelectorContent

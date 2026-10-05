@@ -26,7 +26,7 @@ test("background job progress survives a page reload and resumes the Agent while
   try {
     await expect(thread).toHaveAttribute("data-run-status", "waiting");
     await expect(jobCard).toHaveAttribute("data-job-status", "running");
-    await expect(thread.getByText("后台正在整理", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "等待后台作业" })).toBeVisible();
     await page.reload();
     await expect(jobCard).toHaveAttribute("data-job-status", "running");
     await expect(thread).toHaveAttribute("data-run-status", "waiting");

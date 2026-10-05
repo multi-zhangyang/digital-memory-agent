@@ -87,6 +87,8 @@ test("streaming stays editable, reconnects without losing chunks and delivers na
   ).toBeGreaterThanOrEqual(2);
   await expect(page.getByRole("log")).toContainText(expected);
   expect(reads.filter((url) => url.endsWith("/session"))).toHaveLength(0);
+  await expect(page.getByTestId("work-surface")).toHaveCount(0);
+  await page.getByRole("button", { name: "切换工作区", exact: true }).click();
   await expect(page.getByTestId("project-workspace")).toBeVisible();
   await page.waitForTimeout(250);
   expect(reads.filter((url) => url.endsWith("/session"))).toHaveLength(0);
@@ -183,6 +185,8 @@ test("long histories load incrementally and cached task switches retain the draf
   const lastTool = page.getByTestId("tool-activity").last();
   await lastTool.getByRole("button", { name: /读取文件/ }).click();
   await expect(lastTool.getByText("完整记录 59", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("work-surface")).toHaveCount(0);
+  await page.getByRole("button", { name: "切换工作区", exact: true }).click();
   await expect(page.getByTestId("project-workspace")).toBeVisible();
   await page.getByRole("button", { name: "关闭工作区" }).click();
   await expect(lastTool.getByText("完整记录 59", { exact: true })).toBeVisible();

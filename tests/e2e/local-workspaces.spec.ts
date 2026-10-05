@@ -41,7 +41,8 @@ test("opens an existing folder, edits originals, runs Pi there and reopens the s
       } else await route.continue();
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
+    await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+    await page.getByRole("menuitem", { name: "打开本地文件夹", exact: true }).click();
     const picker = page.getByRole("dialog", { name: "打开文件夹" });
     const pathInput = picker.getByLabel("文件夹路径", { exact: true });
     await pathInput.focus();
@@ -116,12 +117,13 @@ test("opens an existing folder, edits originals, runs Pi there and reopens the s
       (item: { directory: string }) => item.directory === directory,
     );
     expect(project.directoryKind).toBe("local");
-    await pane.getByRole("tab", { name: "文件", exact: true }).click();
+    await page.getByTestId("work-surface").getByRole("tab", { name: "文件", exact: true }).click();
     await page.screenshot({
       path: "test-results/local-folder-workspace.png",
       animations: "disabled",
     });
-    await page.getByRole("button", { name: "选择项目文件夹" }).click();
+    await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+    await page.getByRole("menuitem", { name: "打开本地文件夹", exact: true }).click();
     await expect(picker.getByLabel("文件夹路径", { exact: true })).toHaveValue(
       directory,
     );
@@ -129,6 +131,7 @@ test("opens an existing folder, edits originals, runs Pi there and reopens the s
       .getByRole("button", { name: "打开文件夹", exact: true })
       .click();
     await expect(picker).not.toBeVisible();
+    await expect(page.getByTestId("work-surface").getByRole("tab", { name: "文件", exact: true })).toHaveAttribute("data-state", "active");
     const after = (await (await request.get("/api/projects")).json()).projects;
     expect(after).toHaveLength(before.length);
     expect(
@@ -136,14 +139,18 @@ test("opens an existing folder, edits originals, runs Pi there and reopens the s
         .id,
     ).toBe(project.id);
     await page.reload();
-    await expect(
-      page.getByRole("button", { name: "打开项目 旅行资料", exact: true }),
-    ).toHaveAttribute("data-active", "true");
+    await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+    await page.getByRole("menuitem", { name: "工作目录", exact: true }).hover();
+    await expect(page.getByRole("menuitemradio", { name: "打开项目 旅行资料", exact: true })).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
     await page.goto(taskUrl);
     await expect(page.getByTestId("run-thread")).toHaveAttribute(
       "data-run-status",
       "completed",
     );
+    await expect(page.getByTestId("workspace-directory")).toHaveText(directory);
+    await page.getByRole("button", { name: "关闭工作区", exact: true }).click();
     await page.getByRole("button", { name: "切换工作区", exact: true }).click();
     await expect(page.getByTestId("workspace-directory")).toHaveText(directory);
   } finally {
@@ -162,7 +169,8 @@ test("opens a pasted folder path on mobile and keeps errors and cancellation in 
     await writeFile(join(directory, "原件.txt"), "本地文件");
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
-    await page.getByRole("button", { name: "选择工作目录" }).click();
+    await page.getByRole("button", { name: "工作区选项", exact: true }).click();
+    await page.getByRole("menuitem", { name: "打开本地文件夹", exact: true }).click();
     const picker = page.getByRole("dialog", { name: "打开文件夹" });
     await picker
       .getByLabel("文件夹路径", { exact: true })
@@ -198,7 +206,7 @@ test("opens a pasted folder path on mobile and keeps errors and cancellation in 
         .getByText("原件.txt", { exact: true }),
     ).toBeVisible();
     await page
-      .getByRole("button", { name: "关闭项目面板", exact: true })
+      .getByRole("button", { name: "关闭工作区", exact: true })
       .click();
     await page.keyboard.press("Control+o");
     await expect(picker).toBeVisible();

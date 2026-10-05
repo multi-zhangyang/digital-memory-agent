@@ -11,7 +11,7 @@ test("organizes activities in conversation, persists corrections and keeps revie
   expect((await request.patch("/api/memory-settings", { data: { intake: "manual", capture: "off", textModelId: "openai-compatible/living-browser-test", photoModelId: "openai-compatible/living-browser-test" } })).ok()).toBeTruthy();
   try {
     await page.setViewportSize({ width: 1440, height: 960 }); await page.goto("/");
-    await expect(page.getByRole("heading", { name: "新任务" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "新对话", exact: true })).toBeVisible();
     await page.screenshot({ path: "test-results/living-memory-home-1440.png", animations: "disabled" });
     const tag = randomUUID().slice(0, 8);
     const composer = page.getByTestId("workbench-composer").last();

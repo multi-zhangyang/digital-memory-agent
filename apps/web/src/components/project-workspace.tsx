@@ -78,7 +78,16 @@ import {
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const FileDiff = dynamic(
-  () => import("./file-diff").then((module) => module.FileDiff),
+  async () => {
+    const [module, { preloadHighlighter }] = await Promise.all([
+      import("./file-diff"),
+      import("@pierre/diffs"),
+    ]);
+    // Diffs 1.3.6 treats an empty pre as hydrated on StrictMode's remount.
+    // Load its themes before mounting so the initial render has actual lines.
+    await preloadHighlighter({ themes: ["pierre-dark", "pierre-light"], langs: [] });
+    return module.FileDiff;
+  },
   { loading: () => <Skeleton className="m-3 h-32" /> },
 );
 const CodeBlock = dynamic(
@@ -241,8 +250,10 @@ export function ProjectWorkspace({
   onOpenFolder,
   onChanged,
   onOpenFile,
+  visible = true,
 }: {
   project: Project;
+  visible?: boolean;
   onOpenFile?: (path: string) => void;
   tab: string;
   reviewRunId: string;
@@ -361,8 +372,8 @@ export function ProjectWorkspace({
     }
   }, [project.id]);
   useEffect(() => {
-    void refresh();
-  }, [runs.at(-1)?.status, refresh]);
+    if (visible) void refresh();
+  }, [visible, runs.at(-1)?.status, refresh]);
   async function action(fn: () => Promise<unknown>) {
     setBusy(true);
     setError("");

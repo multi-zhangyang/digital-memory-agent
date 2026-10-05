@@ -160,7 +160,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
               className="h-9 gap-2.5"
             >
               <SquarePen />
-              <span>新任务</span>
+              <span>新对话</span>
             </SidebarMenuButton>
             <SidebarMenuAction
               aria-label="搜索工作空间"
@@ -179,7 +179,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
               className="h-8 gap-2.5 text-muted-foreground data-[active=true]:text-foreground"
             >
               <ListTodo />
-              <span>所有任务</span>
+              <span>对话</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -188,9 +188,8 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
         <SidebarGroup className="px-3">
           <SidebarMenu>
             {[
+              { id: "memory", label: "记忆", icon: Brain },
               { id: "assets", label: "资料库", icon: FolderOpen },
-              { id: "memory", label: "个人记忆", icon: Brain },
-              { id: "datasets", label: "数据集", icon: Database },
             ].map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}>
               <SidebarMenuButton tooltip={label} aria-label={label} isActive={view === id} onClick={() => onView(id as WorkbenchPage)}>
                 <Icon /><span>{label}</span>
@@ -441,6 +440,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
           {[
             { id: "processing", label: "处理与核对", icon: ListTodo },
             { id: "artifacts", label: "整理结果", icon: FileText },
+            { id: "datasets", label: "数据集", icon: Database },
           ].map(({ id, label, icon: Icon }) => (
             <SidebarMenuItem key={id}>
               <SidebarMenuButton

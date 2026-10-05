@@ -15,9 +15,9 @@ import { VideoIndexFrames } from "./video-index-frames";
 import { DatasetAuditDecisions, DatasetAuditSummary } from "./dataset-audit";
 
 const labels = { queued: "等待处理", running: "处理中", completed: "已完成", failed: "未完成", cancelled: "已取消", skipped: "已跳过" };
-type JobDetail = TaskJob & { result: Partial<VideoSourceIndex> & { audit?: DatasetAuditJob; decisions?: DatasetAuditDecision[]; sourceHash?: string; state?: string; assetId?: string; jobId?: string; error?: string; entries?: { id: string; title: string; status: string }[]; assets?: ProcessingAssetResult[]; failures?: { assetId: string; error: string }[]; nextAssetOffset?: number | null } };
+type JobDetail = TaskJob & { result: Partial<VideoSourceIndex> & { activities?: { id: string; title: string; status: string }[]; audit?: DatasetAuditJob; decisions?: DatasetAuditDecision[]; sourceHash?: string; state?: string; assetId?: string; jobId?: string; error?: string; entries?: { id: string; title: string; status: string }[]; assets?: ProcessingAssetResult[]; failures?: { assetId: string; error: string }[]; nextAssetOffset?: number | null } };
 
-export function ProcessingCenter({ onMemory, onAsset, onDatasets, onSettings }: { onMemory: (id: string) => void; onAsset: (id: string) => void; onDatasets: () => void; onSettings: () => void }) {
+export function ProcessingCenter({ onMemory, onAsset, onActivity, onDatasets, onSettings }: { onMemory: (id: string) => void; onAsset: (id: string) => void; onActivity: (id: string) => void; onDatasets: () => void; onSettings: () => void }) {
   const [tab, setTab] = useState("jobs"), [status, setStatus] = useState("all"), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [page, setPage] = useState<{ jobs: TaskJob[]; total: number; nextOffset: number | null }>();
   const [capabilities, setCapabilities] = useState<CapabilitySnapshot>();
@@ -116,6 +116,7 @@ export function ProcessingCenter({ onMemory, onAsset, onDatasets, onSettings }: 
         {detail.result.frames && detail.result.assetId && detail.result.sourceHash && <VideoIndexFrames frames={detail.result.frames} assetId={detail.result.assetId}
           version={detail.result.sourceHash} name={detail.title.replace(/^索引原件 · /, "")} onMemory={(id) => { setSelected(undefined); onMemory(id); }} />}
         {detail.result.entries?.map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3"><span className="text-sm">{entry.title}</span><Button size="sm" variant="outline" onClick={() => { setSelected(undefined); onMemory(entry.id); }}>查看记录</Button></div>)}
+        {detail.result.activities?.map((activity) => <div key={activity.id} className="flex items-center justify-between gap-3"><span className="text-sm">{activity.title}</span><Button size="sm" variant="outline" onClick={() => { setSelected(undefined); onActivity(activity.id); }}>核对活动</Button></div>)}
         {!!detail.result.assets?.length && <ProcessingAssets assets={detail.result.assets} onAsset={(id) => { setSelected(undefined); onAsset(id); }} />}
         {detail.result.failures?.map((failure, index) => <p key={index} className="text-sm text-muted-foreground">{failure.error}</p>)}
         <div className="flex gap-2">{resultOffset > 0 && <Button size="sm" variant="ghost" onClick={() => setResultOffset(0)}>回到首批</Button>}

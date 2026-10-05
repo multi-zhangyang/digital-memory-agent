@@ -93,7 +93,11 @@ async function fixture(withProvider = false, uploadLimit = 1024 * 1024) {
         const users = request.body.messages.filter(
           (message) => message.role === "user",
         );
-        const last = messageText(users.at(-1)!);
+        const latest = messageText(users.at(-1)!);
+        // A durable continuation is a Harness message, with the original user
+        // task and answered tool result retained in the Pi request.
+        const last = latest === "依据当前任务上下文和恢复记录继续执行，并交付实际结果。"
+          ? users.map(messageText).find((text) => text === "question") || latest : latest;
         if (last === "error")
           return reply.code(401).send({
             error: {
@@ -556,7 +560,7 @@ describe("real Pi adapter with a local model-protocol test server", () => {
     const first = await f.message(a, "第一段经历");
     expect(first.headers.get("x-vercel-ai-ui-message-stream")).toBe("v1");
     expect(await first.text()).toContain("轮次=1");
-    expect(f.requests[0].tools).toHaveLength(32);
+    expect(f.requests[0].tools).toHaveLength(35);
     for (const name of ["inspect_memories", "change_memories", "manage_memory_links", "inspect_dataset", "audit_dataset", "review_dataset", "deliver_dataset"])
       expect(JSON.stringify(f.requests[0].tools)).toContain(`"${name}"`);
     expect(JSON.stringify(f.requests[0].tools)).toContain('"search_evidence"');
@@ -900,6 +904,23 @@ describe("persistent workbench through real Pi tools", () => {
     const finished = await waitRun(f.origin, run.id);
     expect(finished.status).toBe("completed");
     expect(JSON.stringify(finished.parts)).toContain("收到回答：周日");
+  }, 15000);
+
+  it("keeps a Pi question and queued user input through process restart", async () => {
+    const f = await fixture(true), id = await f.create();
+    const { run } = await post<{ run: Run }>(f.origin + "/api/conversations/" + id + "/runs", { text: "question", modelId: "openai-compatible/test-model" });
+    await waitRun(f.origin, run.id, "waiting");
+    await post(f.origin + "/api/conversations/" + id + "/steer", { text: "回答后继续原任务", mode: "followUp" });
+    await f.restart();
+    const waiting = (await fetch(f.origin + "/api/runs/" + run.id).then(json<{ run: Run }>)).run;
+    expect(waiting).toMatchObject({ status: "waiting", waitingFor: "user" });
+    expect(waiting.interventions?.[0]).toMatchObject({ text: "回答后继续原任务", status: "queued" });
+    await post(f.origin + "/api/runs/" + run.id + "/answer", { answer: "周日" });
+    const completed = await waitRun(f.origin, run.id);
+    expect(completed.status).toBe("completed");
+    expect(completed.interventions?.[0].status).toBe("delivered");
+    expect(JSON.stringify(completed.parts)).toContain("收到回答：周日");
+    expect(completed.parts.filter((part) => part.type === "tool" && part.name === "ask_user")).toHaveLength(1);
   }, 15000);
 
   it("retains originals and independently saved memories when deleting a conversation", async () => {

@@ -21,15 +21,56 @@ const server = createServer(async (request, response) => {
   for await (const chunk of request) buffers.push(chunk);
   const body = JSON.parse(Buffer.concat(buffers).toString() || "{}");
   const messages = body.messages || [];
-  const userIndex = messages.findLastIndex(
+  let userIndex = messages.findLastIndex(
     (message) => message.role === "user",
   );
-  const prompt =
+  let prompt =
     typeof messages[userIndex]?.content === "string"
       ? messages[userIndex].content
       : (messages[userIndex]?.content || [])
           .map((part) => part.text || "")
           .join("");
+  if (prompt === "依据当前任务上下文和恢复记录继续执行，并交付实际结果。") {
+    const text = (m) => typeof m.content === "string" ? m.content : (m.content || []).map((p) => p.text || "").join("");
+    const goal = messages.map((m) => { try { const value = text(m); return JSON.parse(value.slice(value.indexOf("{"))).goal; } catch { return undefined; } }).filter(Boolean).at(-1);
+    if (goal) { prompt = goal; const original = messages.findLastIndex((m) => m.role === "user" && text(m) === goal); if (original >= 0) userIndex = original; }
+  }
+  if (body.tools?.some((tool) => tool.function?.name === "submit_activities")) {
+    // Deterministic protocol fixture, not a model quality evaluation.
+    const input = JSON.parse(prompt), groups = new Map();
+    for (const item of input.observations) {
+      const key = body.model === "living-browser-test" ? `${item.occurredAt}:${item.content.includes("野餐") ? "picnic" : item.ref}` : item.ref;
+      groups.set(key, [...(groups.get(key) || []), item]);
+    }
+    const activities = [...groups.values()].filter((items) => items.some((item) => input.requiredRefs.includes(item.ref))).map((items) => ({
+      title: items[0].content.includes("野餐") ? "青禾公园野餐" : items[0].title,
+      summary: items.map((item) => item.sourceQuotes?.[0] || item.content).join("\n").slice(0, 1800),
+      occurredAt: items[0].occurredAt, place: items[0].content.includes("野餐") ? "青禾公园" : "",
+      members: items.map((item) => item.ref), issues: ["请核对活动与来源是否对应"], reason: "浏览器测试按给定日期和活动词归组。",
+    }));
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "activity-fixture", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } }) + "\n\n";
+    response.end(frame({ tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: "submit_activities", arguments: JSON.stringify({ activities }) } }] }, null)
+      + frame({}, "tool_calls") + "data: [DONE]\n\n"); return;
+  }
+  if (body.tools?.some((tool) => tool.function?.name === "submit_dataset_answers")) {
+    const input = JSON.parse(prompt);
+    if (Object.keys(input).sort().join() !== "memory,questions" || !input.memory.content.some((span) => span.text.includes("林舟把备用钥匙交给陈默"))) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "Expected only the isolated source and questions" } })); return;
+    }
+    const answerFor = (question) => question.includes("是什么") ? "备用钥匙" : "陈默";
+    const answers = input.questions.map((question, index) => ({ index, status: "answerable", answerQuote: answerFor(question),
+      evidenceIndices: [0], factIndex: input.questions.findIndex((other) => answerFor(other) === answerFor(question)),
+      reason: "固定协议样例按正文核对接收人或物品；不是实际模型语义评测。",
+    }));
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "source-answer-browser-fixture", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 180, completion_tokens: 100, total_tokens: 280 } }) + "\n\n";
+    response.end(frame({ tool_calls: [{ index: 0, id: "source-answer-browser", type: "function", function: { name: "submit_dataset_answers", arguments: JSON.stringify({ answers }) } }] }, null)
+      + frame({}, "tool_calls") + "data: [DONE]\n\n"); return;
+  }
   if (body.tools?.some((tool) => tool.function?.name === "submit_dataset_review")) {
     const input = JSON.parse(prompt);
     if (!input.memory.content.includes("林舟把备用钥匙交给陈默")) {
@@ -126,7 +167,8 @@ const server = createServer(async (request, response) => {
       attribute: null,
     };
     let entries;
-    if (body.model === "agent-first-browser-test") entries = [{ ...base, title: "交接钥匙", content: text, category: "event" }];
+    if (body.model === "living-browser-test") entries = [{ ...base, title: "青禾公园野餐", content: text, category: "event", occurredAt: "2026-09-20", place: "青禾公园" }];
+    else if (body.model === "agent-first-browser-test") entries = [{ ...base, title: "交接钥匙", content: text, category: "event" }];
     else if (text.includes("住在苏州"))
       entries = [
         {
@@ -213,6 +255,18 @@ const server = createServer(async (request, response) => {
         "data: [DONE]\n\n",
     );
     return;
+  }
+  if (body.model === "living-browser-test") {
+    const decode = (message) => { try { const text = typeof message.content === "string" ? message.content : (message.content || []).map((p) => p.text || "").join(""); return JSON.parse(text.slice(text.indexOf("{"))); } catch { return {}; } };
+    const data = messages.map(decode), context = data.findLast((value) => value.goal) || {};
+    const submitted = data.some((value) => value.job?.kind === "memory-organization") || context.jobs?.some((job) => job.kind === "memory-organization");
+    const delta = !submitted ? { tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: "organize_memories",
+      arguments: JSON.stringify({ assetIds: (context.assets || []).map((asset) => asset.id), title: "整理生活活动" }) } }] } : { content: context.jobs?.some((job) => job.status === "completed")
+        ? "已按来源整理生活活动。请核对活动卡片中的内容与疑点。" : "已提交整理，正在等待后台处理结果。" };
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "living-chat-fixture", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 300, completion_tokens: 120, total_tokens: 420 } }) + "\n\n";
+    response.end(frame(delta, null) + frame({}, delta.tool_calls ? "tool_calls" : "stop") + "data: [DONE]\n\n"); return;
   }
   if (body.model === "media-review-browser-test" || body.model === "video-browser-test") {
     // Deliberate integration policy; the generated pixel fixture is not a perception evaluation.
@@ -444,7 +498,7 @@ const server = createServer(async (request, response) => {
   if (prompt.includes("流式体验测试")) {
     for (let index = 1; index <= 100 && !response.destroyed; index++) {
       write({ content: `片段 ${String(index).padStart(3, "0")}，` });
-      await new Promise((resolve) => setTimeout(resolve, 35));
+      await new Promise((resolve) => setTimeout(resolve, prompt.includes("队列撤回") ? 100 : 35));
     }
     write({}, "stop", {
       prompt_tokens: 240,

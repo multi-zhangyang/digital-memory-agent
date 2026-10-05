@@ -48,7 +48,7 @@ export function TaskLauncher({
               {project?.directory || "打开文件夹"}
             </TooltipContent>
           </Tooltip>
-          <h1 className="text-3xl font-medium tracking-tight">新任务</h1>
+          <h1 className="text-2xl font-medium tracking-tight">新任务</h1>
         </div>
         {composer}
         <div className="mt-5 flex flex-wrap gap-2">
@@ -58,7 +58,7 @@ export function TaskLauncher({
               variant="ghost"
               suggestion={prompt}
               onClick={onPrompt}
-              className="h-8 gap-2 rounded-lg border-transparent bg-transparent px-3 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted"
+              className="h-9 gap-2 px-3"
             >
               {label}
             </Suggestion>

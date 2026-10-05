@@ -1,4 +1,4 @@
-import type { MemoryEntry, TrainingSample } from "@memory/contracts";
+import type { MemoryEntry, SampleAnswerCheck, TrainingSample } from "@memory/contracts";
 import { UserFacingError } from "../errors.js";
 import { normalizeFact } from "./values.js";
 import { assertSampleTime } from "./dataset-time-review.js";
@@ -19,6 +19,7 @@ export interface SampleReviewContext {
   jobId?: string;
   modelId?: string;
   protocolVersion?: number;
+  answerChecks?: Record<string, SampleAnswerCheck>;
 }
 export interface SampleReviewReceipt {
   id: string;
@@ -47,4 +48,13 @@ export function validateReviewedSample(sample: TrainingSample, memories: MemoryE
     throw new UserFacingError(422, "AMBIGUOUS_ANSWER", "答案只有代词，不能独立表达记忆事实，请修订或排除");
   if (answer && normalizeFact(sample.question).includes(answer)) throw new UserFacingError(422, "ANSWER_IN_QUESTION", "问题已经透露完整答案，请修订问法");
   assertSampleTime(sample, memories);
+}
+
+export function validateSampleAnswerCheck(sample: TrainingSample, memories: MemoryEntry[], check: SampleAnswerCheck | undefined, modelId: string | undefined) {
+  if (!check || check.version !== 1 || check.modelId !== modelId || check.question !== sample.question ||
+    normalizeFact(check.answerQuote) !== normalizeFact(sample.answer) || !check.reason.trim() || !check.equivalentQuestion.trim() ||
+    !check.evidenceQuotes.length || check.evidenceQuotes.length > 4 ||
+    check.evidenceQuotes.some((quote) => !quote.trim() || !memories.some((memory) => memory.content.includes(quote))) ||
+    !check.evidenceQuotes.some((quote) => quote.includes(check.answerQuote)))
+    throw new UserFacingError(422, "DATASET_ANSWER_CHECK_REQUIRED", "模型批准须携带与当前问答及冻结正文一致的来源作答记录");
 }

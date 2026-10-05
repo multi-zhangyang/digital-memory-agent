@@ -50,6 +50,10 @@ import { AssetIndexService } from "./memory/asset-index-service.js";
 import { EvidenceService } from "./memory/evidence-service.js";
 import { createEvidenceTools } from "./application/evidence-tools.js";
 import { captureJobs, memoryIndexJobs } from "./application/maintenance-jobs.js";
+import { MemoryActivities } from "./memory/activities.js";
+import { MemoryOrganizationService } from "./memory/organization-service.js";
+import { createActivityTools } from "./application/activity-tools.js";
+import { registerActivityRoutes } from "./application/activity-routes.js";
 
 const uuid = {
   type: "string",
@@ -87,11 +91,14 @@ export function buildApp(
   const jobs = new TaskJobs(store);
   const processing = new AssetProcessingService(store, config, imports);
   const datasets = new DatasetService(store, () => processors);
+  const activities = new MemoryActivities(store, store.memoryCommands);
+  const organization = new MemoryOrganizationService(store, config, () => processors, activities, processing, evidence);
+  jobs.register("memory-organization", organization.driver());
   jobs.register("memory-import", processing.driver());
   jobs.register("memory-dataset", datasets.driver());
   jobs.register("dataset-audit", datasets.audits.driver());
   const businessTools = (id: string) => [...createMemoryTools(store, id), ...createMemoryCommandTools(store, id), ...createProcessingTools(store, processing, jobs, id),
-    ...createKnowledgeTools(store, events, id), ...createDatasetTools(store, datasets, jobs, id), ...createEvidenceTools(store, config, evidence, id)];
+    ...createKnowledgeTools(store, events, id), ...createDatasetTools(store, datasets, jobs, id), ...createEvidenceTools(store, config, evidence, id), ...createActivityTools(store, organization, jobs, id)];
   const capabilities = new CapabilityRegistry([
     { catalog: generalToolCatalog, create: (id: string) => createGeneralTools(store, id) },
     { catalog: memoryToolCatalog, create: businessTools },
@@ -249,7 +256,7 @@ export function buildApp(
         configuring ||
         harness.busy() ||
         imports.busy() ||
-        datasets.busy()
+        datasets.busy() || organization.busy()
       )
         throw new UserFacingError(
           409,
@@ -667,7 +674,7 @@ export function buildApp(
         configuring = false;
       }
     },
-    () => configuring || active.size > 0 || imports.busy(),
+    () => configuring || active.size > 0 || imports.busy() || organization.busy(),
   );
   registerWorkspaceRoutes(
     app,
@@ -685,6 +692,7 @@ export function buildApp(
     captures,
   );
   registerKnowledgeRoutes(app, store, features, events);
+  registerActivityRoutes(app, store, organization);
   registerDatasetRoutes(app, datasets);
   registerProductRoutes(app, store, jobs, capabilities, evidence, processing);
   app.addHook("onReady", async () => {
@@ -693,6 +701,7 @@ export function buildApp(
     assetIndex.start();
     workspace.wake();
     imports.wake();
+    organization.wake();
     captures.wake();
     features.start();
     datasets.start();
@@ -700,6 +709,7 @@ export function buildApp(
   app.addHook("preClose", async () => {
     await store.events.close();
     await intake.close();
+    await organization.close();
     await workspace.close();
     await captures.close();
     await imports.close();

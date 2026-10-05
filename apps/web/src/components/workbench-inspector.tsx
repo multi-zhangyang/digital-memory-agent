@@ -810,6 +810,7 @@ export function WorkbenchInspector({
   onClose,
   onChanged,
   onUseAsset,
+  embedded = false,
 }: {
   target: InspectorTarget;
   assets: Asset[];
@@ -819,6 +820,7 @@ export function WorkbenchInspector({
   onClose: () => void;
   onChanged: () => void;
   onUseAsset: (asset: Asset) => void;
+  embedded?: boolean;
 }) {
   const [resolvedAsset, setResolvedAsset] = useState<Asset>();
   const [assetError, setAssetError] = useState("");
@@ -853,7 +855,7 @@ export function WorkbenchInspector({
       className="flex h-full min-h-0 flex-col bg-background"
       data-testid="workbench-inspector"
     >
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
+      {!embedded && <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
         <Tabs
           value={target.tab}
           onValueChange={(tab) =>
@@ -874,7 +876,7 @@ export function WorkbenchInspector({
         >
           <X />
         </Button>
-      </div>
+      </div>}
       <div className="min-h-0 flex-1 overflow-auto p-5">
         {target.id && (
           <Button
@@ -1007,7 +1009,7 @@ export function WorkbenchInspector({
                   {target.tab === "assets"
                     ? "还没有资料"
                     : target.tab === "artifacts"
-                      ? "结果将保存在这里"
+                      ? "暂无成果"
                       : "还没有相关记忆"}
                 </EmptyTitle>
               </EmptyHeader>

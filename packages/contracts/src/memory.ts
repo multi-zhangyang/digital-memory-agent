@@ -48,6 +48,8 @@ export interface MemoryEntry {
   personIds?: string[];
   conflictsWith?: string[];
   forgottenAt?: string;
+  /** Confirmed activity summaries retain their input revisions; changed inputs require review again. */
+  derivedFrom?: { id: string; version: number }[];
 }
 
 export type MemoryEvidence =

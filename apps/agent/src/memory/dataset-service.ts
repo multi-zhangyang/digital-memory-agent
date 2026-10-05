@@ -253,7 +253,8 @@ export class DatasetService {
         lineage: { datasetId: id, memoryRefs: sample.memoryRefs, evidence: sample.evidence, checks: sample.checks, authority: sample.authority },
         ...(sample.reusedFrom ? { reusedFrom: sample.reusedFrom } : {}),
         ...(sample.evaluationOf ? { evaluationOf: sample.evaluationOf } : {}),
-        intendedUse: sample.intendedUse, kind: sample.kind, status: sample.status, review: sample.review, quality: sample.quality, ...(sample.generation ? { generation: sample.generation } : {}),
+        intendedUse: sample.intendedUse, kind: sample.kind, status: sample.status, review: sample.review, quality: sample.quality,
+        ...(sample.answerCheck ? { answerCheck: sample.answerCheck } : {}), ...(sample.generation ? { generation: sample.generation } : {}),
       }) + "\n";
       after = samples.at(-1)!.id;
     }

@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "scope": "预先固定的虚构来源和有意植入的问答错误，不是用户经历。参考答案及风险标注不发送给处理模型；开发集用于实现，保留集在实现冻结后比较。",
+  "cases": [
+    {
+      "id": "development-direction", "split": "development",
+      "memory": { "title": "归还雨伞", "category": "event", "occurredAt": "2024-04-12", "content": "2024年4月12日，沈禾把雨伞借给陆青。当天傍晚，陆青把雨伞还给沈禾。" },
+      "training": [
+        { "question": "2024年4月12日，谁把雨伞借给了陆青？", "answerQuote": "陆青", "referenceAnswer": "沈禾", "risk": "答案来自正文，但把借出人和借入人颠倒" },
+        { "question": "2024年4月12日，沈禾借给陆青的物品是什么？", "answerQuote": "雨伞", "referenceAnswer": "雨伞", "risk": null }
+      ],
+      "evaluation": [{ "question": "2024年4月12日，陆青是从谁那里借到雨伞的？", "trainingIndex": 0, "referenceAnswer": "沈禾", "risk": "须和训练题一同修复借出人" }]
+    },
+    {
+      "id": "development-dates", "split": "development",
+      "memory": { "title": "音乐会门票", "category": "event", "occurredAt": "2024-05-19", "content": "2024年5月3日，唐宁预订了杉林礼堂音乐会的门票。音乐会于2024年5月19日举行，同行者是季澄。" },
+      "training": [
+        { "question": "唐宁为2024年5月19日的杉林礼堂音乐会预订门票的日期是哪天？", "answerQuote": "2024年5月19日", "referenceAnswer": "2024年5月3日", "risk": "把举办日期当作订票日期" },
+        { "question": "2024年5月19日，杉林礼堂音乐会的同行者是谁？", "answerQuote": "季澄", "referenceAnswer": "季澄", "risk": null }
+      ],
+      "evaluation": [{ "question": "2024年5月19日这场杉林礼堂音乐会的票，唐宁是何时预订的？", "trainingIndex": 0, "referenceAnswer": "2024年5月3日", "risk": "两个题目均须区分订票与演出" }]
+    },
+    {
+      "id": "development-similar-weekends", "split": "development",
+      "memory": { "title": "两次买书", "category": "event", "occurredAt": "", "content": "两个不同的周末，我和邹恬都去了柳岸书店。第一次买了《苔藓手册》，第二次买了《河流图册》。两次的具体日期都没有记录。" },
+      "training": [
+        { "question": "我和邹恬某个周末在柳岸书店买了哪本书？", "answerQuote": "《苔藓手册》", "referenceAnswer": null, "risk": "某个周末不能区分两次事件；须加入正文支持的次数限定或待核对" },
+        { "question": "我和邹恬第二次周末去柳岸书店时买了哪本书？", "answerQuote": "《河流图册》", "referenceAnswer": "《河流图册》", "risk": null }
+      ],
+      "evaluation": [{ "question": "我和邹恬在柳岸书店的那次周末购书，书名是什么？", "trainingIndex": 0, "referenceAnswer": null, "risk": "既不能补日期，也不能用那次来区分事件" }]
+    },
+    {
+      "id": "development-presupposition", "split": "development",
+      "memory": { "title": "旅行箱交接", "category": "event", "occurredAt": "2024-06-10", "content": "2024年6月10日，邱野把周岳托他转交的蓝色旅行箱交给宋伊。旅行箱归谁所有没有记录。" },
+      "training": [
+        { "question": "2024年6月10日，宋伊自己购买的旅行箱是什么颜色？", "answerQuote": "蓝色", "referenceAnswer": null, "risk": "题干暗含宋伊购买和拥有旅行箱，正文只支持接收" },
+        { "question": "2024年6月10日，邱野将旅行箱交给了谁？", "answerQuote": "宋伊", "referenceAnswer": "宋伊", "risk": null }
+      ],
+      "evaluation": [{ "question": "2024年6月10日，宋伊买下的旅行箱呈什么颜色？", "trainingIndex": 0, "referenceAnswer": null, "risk": "可移除不支持的购买前提再核对，不能因为颜色在正文就认可" }]
+    },
+    {
+      "id": "development-pronoun-and-leakage", "split": "development",
+      "memory": { "title": "借用相机", "category": "relationship", "occurredAt": "", "content": "贺岚是我的同事。一次郊游前，我向贺岚借了相机，回来后把相机还给了她。" },
+      "training": [
+        { "question": "贺岚与我是什么关系？", "answerQuote": "贺岚是我的同事。", "referenceAnswer": "同事", "risk": "答案可缩短为所问关系" },
+        { "question": "那一次郊游结束后，我把借来的相机还给了谁？", "answerQuote": "回来后把相机还给了她", "referenceAnswer": "贺岚", "risk": "长答案仍只以代词指代接收人；需要有来源支持的人名" }
+      ],
+      "evaluation": [{ "question": "贺岚是我的同事还是邻居？", "trainingIndex": 0, "referenceAnswer": "同事", "risk": "正确选项出现在题干中，完整答案字符串检查抓不到" }]
+    },
+    {
+      "id": "development-same-answer-different-fact", "split": "development",
+      "memory": { "title": "两人的路线", "category": "event", "occurredAt": "2024-07-21", "content": "2024年7月21日，周川推荐的骑行目的地是红桥，柳安散步的起点也是红桥。周川当天骑的是山地车。" },
+      "training": [
+        { "question": "2024年7月21日，周川推荐的骑行目的地是哪里？", "answerQuote": "红桥", "referenceAnswer": "红桥", "risk": null },
+        { "question": "2024年7月21日，周川骑的是什么类型的车？", "answerQuote": "山地车", "referenceAnswer": "山地车", "risk": null }
+      ],
+      "evaluation": [{ "question": "2024年7月21日，柳安从哪里开始散步？", "trainingIndex": 0, "referenceAnswer": "红桥", "risk": "答案相同但人物、活动和地点角色不同，不能视为同事实改写" }]
+    },
+    {
+      "id": "holdout-direction", "split": "holdout",
+      "memory": { "title": "交接笔记本", "category": "event", "occurredAt": "2023-11-06", "content": "2023年11月6日，温乔把蓝色笔记本交给苏墨，苏墨当天再把笔记本转交给梁溪。" },
+      "training": [
+        { "question": "2023年11月6日，苏墨最后把蓝色笔记本交给谁？", "answerQuote": "温乔", "referenceAnswer": "梁溪", "risk": "把最初交出人当作最后接收人" },
+        { "question": "2023年11月6日，温乔交出的笔记本是什么颜色？", "answerQuote": "蓝色", "referenceAnswer": "蓝色", "risk": null }
+      ],
+      "evaluation": [{ "question": "2023年11月6日，谁从苏墨手中接收了蓝色笔记本？", "trainingIndex": 0, "referenceAnswer": "梁溪", "risk": "须保留第二段交接方向" }]
+    },
+    {
+      "id": "holdout-historical-state", "split": "holdout",
+      "memory": { "title": "工作地点变化", "category": "profile", "occurredAt": "", "content": "2023年1月到2023年8月，许遥在枫叶办公室工作。2023年9月到2024年2月，许遥在银杏办公室工作。2024年3月之后的工作地点没有记录。" },
+      "training": [
+        { "question": "2023年10月，许遥在哪个办公室工作？", "answerQuote": "枫叶办公室", "referenceAnswer": "银杏办公室", "risk": "旧状态与后续有效阶段混淆；月份在原文有效时段内" },
+        { "question": "许遥目前在哪个办公室工作？", "answerQuote": "银杏办公室", "referenceAnswer": null, "risk": "历史状态不能延长到现在" }
+      ],
+      "evaluation": [{ "question": "许遥在2023年10月的办公地点是哪里？", "trainingIndex": 0, "referenceAnswer": "银杏办公室", "risk": "须与同期训练题配对，不能回到旧地点" }]
+    },
+    {
+      "id": "holdout-similar-events", "split": "holdout",
+      "memory": { "title": "两次烘焙课", "category": "event", "occurredAt": "", "content": "我和白榆参加过两次周末烘焙课，地点都是小麦厨房。第一次做了苹果派，第二次做了柠檬塔。具体日期均未记下。" },
+      "training": [
+        { "question": "我和白榆周末在小麦厨房做了什么甜点？", "answerQuote": "苹果派", "referenceAnswer": null, "risk": "同行者和地点都相同，仍无法区分两次事件" },
+        { "question": "我和白榆第二次在小麦厨房上周末烘焙课时做了什么？", "answerQuote": "柠檬塔", "referenceAnswer": "柠檬塔", "risk": null }
+      ],
+      "evaluation": [{ "question": "某个周末，我和白榆在小麦厨房制作的甜点是什么？", "trainingIndex": 0, "referenceAnswer": null, "risk": "某个周末不提供充分消歧信息" }]
+    },
+    {
+      "id": "holdout-negative-presupposition", "split": "holdout",
+      "memory": { "title": "一次出行", "category": "event", "occurredAt": "2023-12-18", "content": "2023年12月18日，段岑没有开车，而是乘渡轮从青湾去松岛。段岑平时喜欢哪种交通方式没有记录。" },
+      "training": [
+        { "question": "2023年12月18日，段岑开车前往哪里？", "answerQuote": "松岛", "referenceAnswer": null, "risk": "目的地正确，但开车前提被正文明确否定" },
+        { "question": "2023年12月18日，段岑实际上乘什么交通工具出行？", "answerQuote": "渡轮", "referenceAnswer": "渡轮", "risk": null }
+      ],
+      "evaluation": [{ "question": "2023年12月18日，段岑自驾的目的地是什么地方？", "trainingIndex": 0, "referenceAnswer": null, "risk": "不能认可相同的错误出行方式" }]
+    },
+    {
+      "id": "holdout-pronoun-and-leakage", "split": "holdout",
+      "memory": { "title": "借取工具", "category": "relationship", "occurredAt": "", "content": "闻笛是我的邻居。一次修书架前，闻笛把电钻借给我，完工后我把电钻还给了他。" },
+      "training": [
+        { "question": "闻笛与我的关系是什么？", "answerQuote": "闻笛是我的邻居。", "referenceAnswer": "邻居", "risk": "答案不需要重复整句关系陈述" },
+        { "question": "那一次书架修好以后，我把借用的电钻还给了谁？", "answerQuote": "完工后我把电钻还给了他", "referenceAnswer": "闻笛", "risk": "答案在原文但没有明确归还对象" }
+      ],
+      "evaluation": [{ "question": "闻笛是我的邻居还是上司？", "trainingIndex": 0, "referenceAnswer": "邻居", "risk": "选项透露所考关系" }]
+    },
+    {
+      "id": "holdout-same-answer-different-fact", "split": "holdout",
+      "memory": { "title": "花卉观察", "category": "event", "occurredAt": "2023-10-08", "content": "2023年10月8日，简沐买的花是白色的，程芷拍摄的花也是白色的。简沐买花的地点是榆树花店。" },
+      "training": [
+        { "question": "2023年10月8日，简沐买的花是什么颜色？", "answerQuote": "白色", "referenceAnswer": "白色", "risk": null },
+        { "question": "2023年10月8日，简沐在哪里买了花？", "answerQuote": "榆树花店", "referenceAnswer": "榆树花店", "risk": null }
+      ],
+      "evaluation": [{ "question": "2023年10月8日，程芷拍摄的花呈什么颜色？", "trainingIndex": 0, "referenceAnswer": "白色", "risk": "颜色答案相同，但买花和拍花指向不同人的不同花" }]
+    }
+  ]
+}

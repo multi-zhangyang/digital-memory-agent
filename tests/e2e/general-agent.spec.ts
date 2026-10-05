@@ -27,6 +27,7 @@ test("general workspace creates a project, imports data, executes a script and r
     .getByRole("button", { name: "保存", exact: true })
     .click();
   await expect(page.getByTestId("project-workspace")).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择项目文件夹", exact: true })).toHaveText("数据工作区");
   await page.getByLabel("导入项目文件").setInputFiles({
     name: "input.csv",
     mimeType: "text/csv",
@@ -44,7 +45,6 @@ test("general workspace creates a project, imports data, executes a script and r
     "completed",
     { timeout: 25000 },
   );
-  await page.getByRole("button", { name: "执行记录", exact: true }).click();
   await expect(page.getByTestId("tool-activity")).toHaveCount(4);
   const command = page.getByTestId("tool-activity").filter({
     has: page.getByRole("button", { name: /执行命令 · python3 sum.py/ }),
@@ -65,8 +65,8 @@ test("general workspace creates a project, imports data, executes a script and r
   await expect(
     page.getByRole("button", { name: "思考过程" }).first(),
   ).toBeVisible();
-  const pane = page.getByTestId("project-workspace");
-  await pane.getByRole("tab", { name: /改动/ }).click();
+  const pane = page.getByTestId("project-workspace").filter({ visible: true });
+  await page.getByRole("button", { name: "审阅文件改动", exact: true }).click();
   await expect(
     pane.getByRole("option", { name: "result.json 新增", exact: true }),
   ).toBeVisible();
@@ -79,14 +79,19 @@ test("general workspace creates a project, imports data, executes a script and r
     fullPage: true,
     animations: "disabled",
   });
-  await pane.getByRole("tab", { name: "终端", exact: true }).click();
+  await page.getByRole("button", { name: "打开终端输出", exact: true }).click();
   await expect(pane.getByText("PROCESSING", { exact: false })).toBeVisible();
-  await pane.getByRole("tab", { name: "文件", exact: true }).click();
+  await page.getByTestId("work-surface").getByRole("tab", { name: "文件", exact: true }).click();
   await pane.getByText("result.json", { exact: true }).first().click();
   await pane.getByRole("button", { name: "编辑", exact: true }).click();
   await page.getByLabel("文件内容").fill('{"total":8}');
+  await page.getByTestId("work-surface").getByRole("tab", { name: "文件", exact: true }).click();
+  await pane.getByText("input.csv", { exact: true }).first().click();
+  await expect(page.getByTestId("work-surface").getByRole("tab", { name: "input.csv", exact: true })).toHaveAttribute("data-state", "active");
+  await page.getByTestId("work-surface").getByRole("tab", { name: "result.json", exact: true }).click();
+  await expect(page.getByLabel("文件内容")).toHaveValue('{"total":8}');
   await pane.getByRole("button", { name: "保存", exact: true }).click();
-  await pane.getByRole("tab", { name: /改动/ }).click();
+  await page.getByRole("button", { name: "审阅文件改动", exact: true }).click();
   await pane
     .getByRole("button", { name: "回退 result.json", exact: true })
     .click();
@@ -102,7 +107,13 @@ test("general workspace creates a project, imports data, executes a script and r
     "completed",
   );
   const previousUrl = page.url();
-  await page.getByRole("button", { name: "从这里分支", exact: true }).click();
+  await page.getByRole("button", { name: "会话与能力", exact: true }).click();
+  const controls = page.getByRole("dialog", { name: "会话与能力" });
+  await controls.getByRole("tab", { name: "能力", exact: true }).click();
+  await expect(controls.getByText("read", { exact: true })).toBeVisible();
+  await controls.getByRole("tab", { name: "会话树", exact: true }).click();
+  await controls.getByRole("button", { name: /你.*通用任务测试/ }).click();
+  await controls.getByRole("button", { name: "新建分支会话", exact: true }).click();
   await expect(page).not.toHaveURL(previousUrl);
   await expect(
     page
@@ -114,6 +125,35 @@ test("general workspace creates a project, imports data, executes a script and r
       (p: any) => p.name === "数据工作区",
     ),
   ).toBe(true);
+});
+
+test("shows an interrupted tool decision after reload and resumes the same run without repeating the skipped operation", async ({ page, request }) => {
+  await setup(request);
+  await page.goto("/");
+  await page.getByRole("combobox", { name: "本次权限" }).click();
+  await page.getByRole("option", { name: "自动", exact: true }).click();
+  await page.getByLabel("任务指令").fill("纠偏测试：检查中断后的恢复决定");
+  const submitted = page.waitForResponse((response) => /\/api\/conversations\/[^/]+\/runs$/.test(response.url()) && response.request().method() === "POST");
+  await page.getByRole("button", { name: "开始任务", exact: true }).click();
+  const run = (await (await submitted).json()).run;
+  const thread = page.locator(`#run-${run.id}`);
+  await expect(thread.getByTestId("tool-activity")).toHaveAttribute("data-tool-state", "running");
+  await page.getByRole("button", { name: "停止任务", exact: true }).click();
+  await expect(thread).toHaveAttribute("data-run-status", "stopped");
+  await page.reload();
+  const recovery = thread.getByTestId("run-recovery");
+  await expect(recovery.getByText("核对中断操作后继续")).toBeVisible();
+  await expect(recovery.getByText("本次跳过此工具", { exact: true })).toHaveAttribute("data-state", "on");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await recovery.getByRole("button", { name: "继续任务", exact: true }).scrollIntoViewIfNeeded();
+  await expect(recovery.getByRole("button", { name: "继续任务", exact: true })).toBeInViewport();
+  await page.screenshot({ path: "test-results/living-memory-recovery-390.png", animations: "disabled" });
+  await recovery.getByRole("button", { name: "继续任务", exact: true }).click();
+  await expect(thread).toHaveAttribute("data-run-status", "completed", { timeout: 15000 });
+  const finished = (await (await request.get(`/api/runs/${run.id}`)).json()).run;
+  expect(finished.recovery.decisions).toHaveLength(1);
+  expect(finished.recovery.decisions[0].action).toBe("skip");
+  expect(finished.parts.filter((part: { type: string; name?: string }) => part.type === "tool" && part.name === "bash")).toHaveLength(1);
 });
 test("frontend approval blocks execution and native steering reaches an active Pi run", async ({
   page,
@@ -156,6 +196,7 @@ test("frontend approval blocks execution and native steering reaches an active P
     "data-run-status",
     "completed",
   );
+  await expect(page.getByTestId("tool-activity")).toHaveCount(1);
   await page.reload();
   await expect(page.getByTestId("agent-approval")).toHaveAttribute(
     "data-approval-status",
@@ -170,20 +211,13 @@ test("frontend approval blocks execution and native steering reaches an active P
   await page.getByLabel("任务指令").fill("纠偏测试");
   await page.getByRole("button", { name: "开始任务", exact: true }).click();
   await expect(page.getByTestId("run-thread")).toHaveCount(2);
-  const liveTrace = page
-    .getByTestId("run-thread")
-    .last()
-    .getByRole("button", { name: "执行记录", exact: true });
-  await expect(liveTrace).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("tool-activity").last()).toHaveAttribute(
     "data-tool-state",
     "running",
   );
   await page.getByLabel("任务指令").fill("改为输出简短确认");
-  await page.getByRole("button", { name: "立即补充指令" }).click();
-  await expect(page.getByText("已送达", { exact: true })).toBeVisible({
-    timeout: 15000,
-  });
+  await page.getByRole("button", { name: "调整当前任务" }).click();
+  await expect(page.getByTestId("execution-timeline").getByText("改为输出简短确认", { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId("run-thread").last()).toHaveAttribute(
     "data-run-status",
     "completed",

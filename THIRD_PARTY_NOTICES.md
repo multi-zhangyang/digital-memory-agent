@@ -40,6 +40,13 @@ decision and display current persisted sample versions and actors.
 Audit Table rows stack vertically below the small breakpoint so original and
 follow-up reasons remain readable on phones. This adapts official component
 composition and responsive layout without changing the table primitive or theme.
+来源作答证据继续组合现有 Accordion、FieldGroup、FieldTitle 和 FieldDescription，
+按实际核验记录展示并换行；没有修改上游组件、主题或 AI Elements 工具事件协议。
+
+生活活动视图组合官方 Card、FieldGroup、Input、Textarea、Checkbox、Accordion、
+Tabs、Empty、Skeleton 和 Alert。导航调整 Sidebar 的组合和宽度，详情在窄屏使用
+现有官方 Sheet；活动命令仍由服务端实施。`useIsMobile` 接受可选断点，使详情在
+1024px 切换而 Sidebar 保留原默认断点。沿用 neutral 主题与 Geist，没有独立控件或主题。
 
 MIT License
 
@@ -112,6 +119,16 @@ read references and durable draft state belong to the application services.
 components. Job progress is driven by persisted backend events, separately from
 tool submission receipts, and is restored with the conversation after a reload.
 
+生活活动详情组合官方 AI Elements Artifact，恢复操作组合 Confirmation 和 ToolInput；
+问题、决定、工具结果和作业状态均来自持久化 Run。MessageContent 的默认正文调整为
+`text-base leading-7`，恢复清晰可读的对话字号，详情和代码继续按需加载。步骤关联使用
+服务端保存的 stepId，不从界面中的当前计划猜测历史工具所属步骤。
+
+Pi 恢复适配新增显式依赖 `@earendil-works/pi-agent-core` 1.0.0（与已安装 Pi SDK
+同版本），使用公开 `runToolCall` 执行已审批但未消费的原始调用。许可与上游项目同为
+MIT：https://github.com/earendil-works/pi/blob/main/LICENSE。
+检查点、回执和上下文投影在项目适配层实现，没有修改上游包或另建模型循环。
+
 digital memory Harness 重构继续复用这些组件。任务输入保留 PromptInput，
 消息与恢复历史共用 Message / Reasoning，库作业与任务作业在 Task 中明确归属；
 素材证据、处理中心、数据集和设置由现有 shadcn Dialog、Tabs、Table、Field、
@@ -123,10 +140,20 @@ operations 和 ModelRuntime；项目适配位于 `apps/agent/src/integrations/pi
 应用装配位于 `apps/agent/src/application/`。产品 Skills 与模板通过上游资源加载器
 提供。没有复制 CLI 全部交互，也没有依赖上游尚未导出的 Harness 接口。
 
+Pi 工作台消息投影继续组合官方 Message、Reasoning、Tool、Checkpoint、Queue、
+Context、Artifact 和 Attachments。工具参数流、最终消息校正、父子调用和作业关联
+位于应用适配层；共享归约器通过 `@memory/contracts/execution` 提供，不改写 Pi
+执行循环。历史分页滚动定位复用 Conversation 的 `use-stick-to-bottom` 上下文。
+持久工作区和会话树使用 shadcn Tabs、Dialog、ScrollArea、Button 与 Badge，
+只挂载已访问标签以控制代码高亮等组件的成本。原有 Markdown 安全链接适配抽为
+共享模块，没有新增样式系统。Web 扩展 UI 使用公开 Theme 作为文字格式兼容器，
+剥离终端 ANSI 格式；任意 TUI 组件仍明确不支持。
+
 Agent first 适配继续组合官方 PromptInput、Attachments、Task 和 Tool 组件。
 单文件上传重试使用 shadcn Alert / Button；仅附件任务保留真实附件与空用户正文，
 逐素材覆盖和训练文件下载来自实际后台结果。应用层 Markdown 链接适配允许
-受限的同源数据集下载路由；其他本地路径不作为可执行链接。
+受限的同源数据集下载路由；其他本地路径不作为可执行链接。下载失败使用
+shadcn Alert 留在当前会话，交付回执的版本与摘要检查位于应用层。
 Pi 的异步 context hook 在本轮记忆命令提交后重建当前上下文，处理同轮多工具结果的
 调用配对；原生 JSONL 历史保持留存。没有修改 Pi 包或另写模型循环。
 

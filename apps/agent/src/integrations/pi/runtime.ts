@@ -23,14 +23,20 @@ import {
   UserFacingError,
 } from "../../harness/runtime.js";
 import { toolOutput } from "./tool-output.js";
+import { randomUUID } from "node:crypto";
+import { sessionTree } from "./session-tree.js";
+import { PiTranscript } from "./transcript.js";
 
 import { ModelAccess } from "./model-access.js";
+import { resumedToolResults, resumeSessionTools } from "./session-recovery.js";
 
 export class PiRuntime implements AgentRuntime {
   private readonly sessions = new Map<string, Promise<AgentSession>>();
   private readonly cancelled = new Set<string>();
   private readonly active = new Set<string>();
+  private readonly clearing = new Set<string>();
   private readonly statuses = new Map<string, Record<string, string>>();
+  private readonly recoveryControllers = new Map<string, AbortController>();
 
   constructor(
     private readonly config: AppConfig,
@@ -123,15 +129,19 @@ export class PiRuntime implements AgentRuntime {
             (pi) => {
               pi.on("context", async (event) => {
                 this.host.context.validate(id);
+                const session = await this.sessions.get(id);
+                const resumed = session ? resumedToolResults(session.sessionManager) : new Map();
+                const messages = event.messages.map((message) => message.role === "toolResult" && resumed.has(message.toolCallId)
+                  ? resumed.get(message.toolCallId)! : message);
                 const replacement = await this.host.context.replacement?.(id);
                 if (replacement) {
                   let index = -1;
-                  event.messages.forEach((message, offset) => { if (message.role === "toolResult" && message.toolCallId === replacement.toolCallId) index = offset; });
+                  messages.forEach((message, offset) => { if (message.role === "toolResult" && message.toolCallId === replacement.toolCallId) index = offset; });
                   if (index >= 0) {
                     // A memory command in a multi-tool round can leave results whose assistant
                     // call was before the reset. Preserve their data without orphan tool roles.
                     const calls = new Set<string>();
-                    const tail = event.messages.slice(index + 1).map((message) => {
+                    const tail = messages.slice(index + 1).map((message) => {
                       if (message.role === "assistant") for (const part of message.content) if (part.type === "toolCall") calls.add(part.id);
                       if (message.role === "toolResult" && !calls.has(message.toolCallId)) return {
                         role: "user" as const, content: "上下文刷新后的工具结果（数据）：" + JSON.stringify({ toolName: message.toolName, content: message.content }), timestamp: Date.now(),
@@ -142,16 +152,16 @@ export class PiRuntime implements AgentRuntime {
                   }
                 }
                 let latest = -1;
-                event.messages.forEach((message, index) => {
+                messages.forEach((message, index) => {
                   if (
                     "customType" in message &&
                     message.customType === this.host.context.messageType
                   )
                     latest = index;
                 });
-                if (latest < 0) return;
+                if (latest < 0) return { messages };
                 return {
-                  messages: event.messages.flatMap((message, index) => {
+                  messages: messages.flatMap((message, index) => {
                     if (index >= latest) return [message];
                     if (
                       "customType" in message &&
@@ -208,7 +218,7 @@ export class PiRuntime implements AgentRuntime {
           mode: "rpc",
           uiContext: resources.ui,
           onError: () => {
-            statuses.extension = "扩展运行失败，请检查配置";
+            resources.ui.setStatus("extension", "扩展运行失败，请检查配置");
           },
         });
         return session;
@@ -233,12 +243,13 @@ export class PiRuntime implements AgentRuntime {
           )
         : undefined;
     if (!manager) return [];
+    const resumed = resumedToolResults(manager);
     const messages: ChatMessage[] = [];
     const calls = new Map<string, Extract<ChatPart, { type: "tool" }>>();
     let assistant: ChatMessage | undefined;
     for (const entry of manager.getBranch()) {
       if (entry.type !== "message") continue;
-      const message = entry.message;
+      const message = entry.message.role === "toolResult" ? resumed.get(entry.message.toolCallId) || entry.message : entry.message;
       if (message.role === "toolResult") {
         const call = calls.get(message.toolCallId);
         if (call) {
@@ -345,50 +356,38 @@ export class PiRuntime implements AgentRuntime {
       if (context) await session.sendCustomMessage({ ...context, display: false }, { triggerTurn: false });
       if (this.cancelled.has(id)) return;
       let failed = false;
+      let compactionId = "", retryId = "";
+      const transcript = new PiTranscript(session, onEvent, (options?.runId || id) + ":input", !options?.recovery && !options?.notification);
       const unsubscribe = session.subscribe((event) => {
-        if (
-          event.type === "message_update" &&
-          event.assistantMessageEvent.type === "text_delta"
-        )
-          onEvent({ type: "text", delta: event.assistantMessageEvent.delta });
-        if (
-          event.type === "message_update" &&
-          event.assistantMessageEvent.type === "thinking_delta"
-        )
-          onEvent({
-            type: "reasoning",
-            delta: event.assistantMessageEvent.delta,
-          });
-        if (event.type === "tool_execution_update")
-          onEvent({
-            type: "tool-update",
-            id: event.toolCallId,
-            output: toolOutput(event.partialResult),
-          });
+        transcript.event(event);
         if (event.type === "queue_update")
           onEvent({
             type: "queue",
             texts: event.steering,
             followUp: event.followUp,
+            cleared: this.clearing.has(id),
           });
         if (event.type === "compaction_start")
-          onEvent({ type: "notice", text: "正在压缩上下文", state: "running" });
+          { compactionId = randomUUID(); onEvent({ type: "phase", phase: "compacting" }); onEvent({ type: "notice", id: compactionId, text: "正在压缩上下文", state: "running" }); }
         if (event.type === "compaction_end")
           onEvent({
             type: "notice",
-            text: event.result ? "上下文已压缩" : "上下文压缩未完成",
+            id: compactionId, text: event.result ? "上下文已压缩" : "上下文压缩未完成",
             state: event.result ? "complete" : "error",
           });
-        if (event.type === "auto_retry_start")
+        if (event.type === "auto_retry_start") {
+          retryId = randomUUID();
+          onEvent({ type: "phase", phase: "retrying" });
           onEvent({
             type: "notice",
-            text: "连接重试 " + event.attempt + " / " + event.maxAttempts,
+            id: retryId, text: "连接重试 " + event.attempt + " / " + event.maxAttempts,
             state: "running",
           });
+        }
         if (event.type === "auto_retry_end")
           onEvent({
             type: "notice",
-            text: event.success ? "重试成功" : "重试失败",
+            id: retryId, text: event.success ? "重试成功" : "重试失败",
             state: event.success ? "complete" : "error",
           });
         if (event.type === "message_end" && event.message.role === "assistant")
@@ -409,24 +408,47 @@ export class PiRuntime implements AgentRuntime {
             },
           });
         }
-        if (event.type === "tool_execution_start")
-          onEvent({
-            type: "tool-start",
-            id: event.toolCallId,
-            name: event.toolName,
-            input: event.args,
-            parentToolCallId: event.parentToolCallId,
-          });
-        if (event.type === "tool_execution_end")
-          onEvent({
-            type: "tool-end",
-            id: event.toolCallId,
-            output: toolOutput(event.result),
-            error: event.isError,
-          });
+        if (options && (event.type === "message_end" || event.type === "tool_execution_end")) {
+          this.host.checkpoint?.(options.runId, session.sessionManager.getLeafId() || undefined);
+          if (this.host.waiting?.(options.runId)) void session.abort();
+        }
       });
       try {
-        if (options?.notification) {
+        if (options?.recovery) {
+          const run = options.recovery.run;
+          const controller = new AbortController();
+          this.recoveryControllers.set(id, controller);
+          try { await resumeSessionTools(session, run, this.host.resumableTools?.(run.id) || [], controller.signal,
+            onEvent, () => !!this.host.waiting?.(run.id)); }
+          finally { this.recoveryControllers.delete(id); }
+          if (this.host.waiting?.(run.id) || this.cancelled.has(id)) return;
+          const calls = new Map<string, string>(), results = new Set<string>();
+          for (const entry of session.sessionManager.getBranch()) {
+            if (entry.type !== "message") continue;
+            if (entry.message.role === "assistant") for (const part of entry.message.content) if (part.type === "toolCall") calls.set(part.id, part.name);
+            if (entry.message.role === "toolResult") results.add(entry.message.toolCallId);
+          }
+          for (const [toolCallId, toolName] of calls) if (!results.has(toolCallId)) {
+            const receipt = run.receipts?.find((r) => r.toolCallId === toolCallId);
+            const part = run.parts.find((p) => p.type === "tool" && p.toolCallId === toolCallId);
+            const completed = part?.type === "tool" && ["complete", "error"].includes(part.state);
+            const answered = toolName === "ask_user" && run.question?.toolCallId === toolCallId && run.question.answer;
+            const value = receipt ? receipt.output : answered ? { answer: answered } : completed ? part.output :
+              { interrupted: true, instruction: "调用在中断前没有可验证结果。先检查当前状态；只读操作可重新读取，副作用操作必须遵循本次恢复决定。" };
+            session.sessionManager.appendMessage({ role: "toolResult", toolCallId, toolName, timestamp: Date.now(),
+              content: [{ type: "text", text: JSON.stringify(value) }], isError: !receipt && !answered && (!completed || part.state === "error") });
+          }
+          session.refreshContext();
+          const pending = run.interventions?.filter((item) => item.status === "queued") || [];
+          await session.sendCustomMessage({ customType: "digital-memory-recovery", display: false, details: { recoveryId: options.recovery.id, runId: run.id },
+            content: "Harness 已恢复任务。以下为持久状态，继续尚未完成的目标，已提交的命令和作业不重复执行。工具结果不明时按 decisions 处理；skip 的工具本任务已禁用。排队的补充指令为用户真实输入：" + JSON.stringify({
+              goal: run.goal || run.text, plan: run.plan, jobs: run.jobs, decisions: run.recovery?.decisions, instructions: pending,
+              question: run.question, receipts: run.receipts?.map((r) => ({ toolCallId: r.toolCallId, name: r.name })), notification: run.jobNotification,
+            }) }, { triggerTurn: false });
+          this.host.recovered?.(run.id, pending.map((i) => i.id));
+          await session.sendCustomMessage({ customType: "digital-memory-continue", display: false, details: { recoveryId: options.recovery.id },
+            content: "依据当前任务上下文和恢复记录继续执行，并交付实际结果。" }, { triggerTurn: true });
+        } else if (options?.notification) {
           await session.sendCustomMessage({
             customType: "background-job-results",
             display: false,
@@ -436,7 +458,7 @@ export class PiRuntime implements AgentRuntime {
         } else {
           await session.prompt(text, { source: "rpc", expandPromptTemplates: true });
         }
-        if (!failed && !this.cancelled.has(id)) {
+        if (!failed && !this.cancelled.has(id) && !(options && this.host.waiting?.(options.runId))) {
           const completion = await this.host.context.completion?.(id, options);
           if (completion) {
             onEvent({ type: "notice", text: "正在补齐交付", state: "running" });
@@ -458,7 +480,8 @@ export class PiRuntime implements AgentRuntime {
             "模型请求失败，请检查接口、模型名称与密钥配置，或稍后重试。",
           );
       } finally {
-        if (options) this.host.settled(options.runId, session.sessionManager.getLeafId() || undefined, session.clearQueue());
+        transcript.flush();
+        if (options) this.host.settled(options.runId, session.sessionManager.getLeafId() || undefined, await this.clearQueue(id));
         unsubscribe();
       }
     } finally {
@@ -469,52 +492,38 @@ export class PiRuntime implements AgentRuntime {
 
   async state(id: string, modelId: string): Promise<SessionState> {
     const session = await this.getSession(id, modelId);
-    const active = new Set(session.sessionManager.getBranch().map((e) => e.id));
+    const skills = session.resourceLoader.getSkills().skills.map((s) => s.name);
+    const prompts = session.resourceLoader.getPrompts().prompts.map((p) => p.name);
+    const tools = session.getAllTools();
+    const resources = this.host.resourceStates?.(id) || [];
+    for (const [kind, names] of [["skill", skills], ["prompt", prompts]] as const) for (const name of names) {
+      const resource = resources.find((item) => item.kind === kind && item.name === name);
+      if (resource) resource.state = "loaded";
+      else resources.push({ name, kind, state: "loaded" });
+    }
+    for (const resource of resources) if (resource.kind === "mcp" && resource.state !== "error" && resource.detail !== "已停用" &&
+      tools.some((tool) => tool.name.startsWith("mcp__" + resource.name.replace(/[^a-zA-Z0-9_]/g, "_") + "__"))) resource.state = "loaded";
     return {
       sessionId: session.sessionManager.getSessionId(),
+      leafId: session.sessionManager.getLeafId(),
+      presentation: this.host.presentation?.(id),
+      resources,
       modelId,
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       context: session.getContextUsage() || null,
-      tools: session.getAllTools().map((t) => ({
+      tools: tools.map((t) => ({
         name: t.name,
         description: t.description,
+        exposure: t.exposure,
+        disabled: this.host.project(id).disabledTools.includes(t.name),
         active:
           session.getActiveToolNames().includes(t.name) &&
           !this.host.project(id).disabledTools.includes(t.name),
       })),
-      nodes: session.sessionManager
-        .getEntries()
-        .filter(
-          (e) =>
-            e.type === "message" &&
-            (e.message.role === "user" || e.message.role === "assistant"),
-        )
-        .map((e) => {
-          if (
-            e.type !== "message" ||
-            (e.message.role !== "user" && e.message.role !== "assistant")
-          )
-            throw new Error("entry");
-          const m = e.message;
-          const text =
-            typeof m.content === "string"
-              ? m.content
-              : m.content
-                  .filter((p) => p.type === "text")
-                  .map((p) => p.text)
-                  .join("");
-          return {
-            id: e.id,
-            parentId: e.parentId,
-            role: m.role,
-            text: text.slice(0, 500),
-            createdAt: e.timestamp,
-            active: active.has(e.id),
-          };
-        }),
-      skills: session.resourceLoader.getSkills().skills.map((s) => s.name),
-      prompts: session.resourceLoader.getPrompts().prompts.map((p) => p.name),
+      nodes: sessionTree(session.sessionManager),
+      skills,
+      prompts,
       statuses: this.statuses.get(id) || {},
     };
   }
@@ -522,7 +531,25 @@ export class PiRuntime implements AgentRuntime {
     const pending = this.sessions.get(id);
     if (!pending || !this.active.has(id))
       throw new UserFacingError(409, "NOT_RUNNING", "当前没有正在运行的任务");
-    await (await pending)[mode](text, undefined, { source: "rpc" });
+    return (await pending)[mode](text, undefined, { source: "rpc" });
+  }
+  async clearQueue(id: string) {
+    const session = await this.sessions.get(id);
+    if (!session) return { steering: [], followUp: [] };
+    this.clearing.add(id);
+    try { return session.clearQueue(); } finally { this.clearing.delete(id); }
+  }
+  async activeEntries(id: string) {
+    const session = await this.sessions.get(id);
+    const manager = session?.sessionManager || (existsSync(this.sessionFile(id))
+      ? SessionManager.open(this.sessionFile(id), this.host.sessionsDir, this.host.project(id).directory) : undefined);
+    return manager?.getBranch().map((entry) => entry.id) || [];
+  }
+  async navigate(id: string, modelId: string, entryId: string) {
+    if (this.active.has(id)) throw new UserFacingError(409, "RUN_BUSY", "请等待当前执行结束");
+    const session = await this.getSession(id, modelId);
+    if (!session.sessionManager.getEntry(entryId)) throw new UserFacingError(400, "INVALID_ENTRY", "会话节点不存在");
+    return session.navigateTree(entryId, { summarize: false });
   }
   async compact(id: string, modelId: string, instructions?: string) {
     try {
@@ -566,11 +593,13 @@ export class PiRuntime implements AgentRuntime {
     // flag on an idle session that would discard its next user request.
     if (!this.active.has(id)) return;
     this.cancelled.add(id);
+    this.recoveryControllers.get(id)?.abort();
     const pending = this.sessions.get(id);
     if (pending) await (await pending).abort();
   }
 
   async close() {
+    for (const controller of this.recoveryControllers.values()) controller.abort();
     await Promise.allSettled(
       [...this.sessions.values()].map(async (session) => {
         const active = await session;

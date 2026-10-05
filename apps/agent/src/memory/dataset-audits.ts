@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { DatasetAuditDecision, DatasetAuditJob, MemoryEntry, Run, TrainingSample } from "@memory/contracts";
+import type { DatasetAuditDecision, DatasetAuditJob, MemoryEntry, Run, SampleAnswerCheck, TrainingSample } from "@memory/contracts";
 import type { MemoryData } from "./data.js";
 import type { MemoryProcessors } from "./processors.js";
 import { DatasetLedger } from "./dataset-ledger.js";
@@ -9,11 +9,13 @@ import { DATASET_REVIEW_VERSION, type DatasetQualityDecision, type DatasetQualit
 import type { TaskJobDriver } from "../harness/job-driver.js";
 import type { SampleChange } from "./dataset-review.js";
 import { normalizeFact } from "./values.js";
+import { checkedSampleAnswer, validateDatasetAnswers, type DatasetAnswerAssessment, type DatasetAnswerFinding, type DatasetAnswerInput } from "./dataset-answer-checks.js";
 
 type AuditRow = { data: string; status: DatasetAuditJob["status"]; revision: number };
 type InputRow = { jobId: string; ordinal: number; memoryId: string; status: string; data: string; result?: string };
 type Batch = { memory: MemoryEntry; samples: TrainingSample[]; selected: string[] };
-type BatchResult = { attempts: { at: string; decisions?: DatasetQualityDecision[]; error?: string }[]; decisions: DatasetAuditDecision[] };
+type BatchResult = { attempts: { at: string; decisions?: DatasetQualityDecision[]; error?: string }[]; decisions: DatasetAuditDecision[];
+  answerChecks?: { at: string; questions: string[]; answers?: DatasetAnswerFinding[]; error?: string }[] };
 const now = () => new Date().toISOString();
 const active = (job: DatasetAuditJob) => ["queued", "running"].includes(job.status);
 
@@ -57,7 +59,7 @@ export class DatasetAudits {
       return job;
     }
     const processor = this.processors();
-    if (!processor?.reviewDatasetSamples || processor.hasModel && !processor.hasModel(input.modelId))
+    if (!processor?.reviewDatasetSamples || !processor.answerDatasetQuestions || processor.hasModel && !processor.hasModel(input.modelId))
       throw new UserFacingError(400, "MODEL_UNAVAILABLE", "所选样本核验模型未配置");
     const job = this.store.memories.transaction(() => {
       const dataset = this.ledger.get(input.datasetId); this.assertIdle(dataset.id);
@@ -135,15 +137,42 @@ export class DatasetAudits {
     });
   }
 
+  private async answerQuestions(id: string, row: InputRow, result: BatchResult, input: DatasetAnswerInput, signal: AbortSignal): Promise<DatasetAnswerAssessment> {
+    const save = () => this.store.db.prepare("UPDATE dataset_audit_inputs SET result=? WHERE jobId=? AND ordinal=?").run(JSON.stringify(result), id, row.ordinal);
+    const key = JSON.stringify(input.questions);
+    const cached = result.answerChecks?.find((check) => check.answers && !check.error && JSON.stringify(check.questions) === key);
+    if (cached?.answers) { validateDatasetAnswers(input, cached.answers); return { questions: cached.questions, answers: cached.answers }; }
+    const job = this.check(id, signal);
+    const processor = this.processors();
+    if (!processor?.answerDatasetQuestions) throw new UserFacingError(400, "PROCESSOR_UNAVAILABLE", "来源作答处理器未配置，不能批准本批样本");
+    const attempt: NonNullable<BatchResult["answerChecks"]>[number] = { at: now(), questions: [...input.questions] };
+    (result.answerChecks ||= []).push(attempt); save();
+    this.patch(id, { usage: { ...job.usage, calls: job.usage.calls + 1 } });
+    try {
+      const checked = await processor.answerDatasetQuestions(input, signal);
+      this.check(id, signal);
+      const usage = this.get(id).usage;
+      this.patch(id, { usage: { ...usage, input: usage.input + checked.usage.input, output: usage.output + checked.usage.output } });
+      attempt.answers = checked.answers;
+      validateDatasetAnswers(input, checked.answers); save();
+      return { questions: attempt.questions, answers: checked.answers };
+    } catch (failure) {
+      if (!signal.aborted && !this.closed) {
+        attempt.error = failure instanceof UserFacingError ? failure.message : "来源作答未完成"; save();
+      }
+      throw failure;
+    }
+  }
+
   private async batch(id: string, row: InputRow, signal: AbortSignal) {
     const batch = JSON.parse(row.data) as Batch;
     const result: BatchResult = row.result ? JSON.parse(row.result) : { attempts: [], decisions: [] };
     const verifier = new MemorySourceVerifier(this.store);
     const input: DatasetQualityInput = { modelId: this.get(id).modelId,
       memory: { title: batch.memory.title, content: batch.memory.content, category: batch.memory.category, occurredAt: batch.memory.occurredAt, validity: batch.memory.validity },
-      samples: batch.samples.map((sample) => {
+      samples: batch.samples.map((sample, index) => {
         const trainingIndex = sample.evaluationOf ? batch.samples.findIndex((training) => training.id === sample.evaluationOf!.id) : -1;
-        return { question: sample.question, answer: sample.answer, intendedUse: sample.intendedUse, status: sample.status,
+        return { index, question: sample.question, answer: sample.answer, intendedUse: sample.intendedUse, status: sample.status,
           reviewable: batch.selected.includes(sample.id), trainingIndex: trainingIndex < 0 ? null : trainingIndex };
       }),
     };
@@ -159,7 +188,10 @@ export class DatasetAudits {
             throw new UserFacingError(409, "VERSION_CONFLICT", "核验期间样本已更新，请重新提交核验");
           this.store.db.prepare("INSERT OR IGNORE INTO dataset_audit_views VALUES(?,?,?)").run(id, sample.id, sample.version);
         }
-        this.patch(id, { usage: { ...job.usage, calls: job.usage.calls + 1 } });
+        input.answerChecks ||= await this.answerQuestions(id, row, result, { modelId: job.modelId, memory: input.memory,
+          questions: batch.samples.map((sample) => sample.question) }, signal);
+        const beforeReview = this.get(id).usage;
+        this.patch(id, { usage: { ...beforeReview, calls: beforeReview.calls + 1 } });
         const generated = await this.processors()!.reviewDatasetSamples!(input, signal);
         this.check(id, signal); decisions = generated.decisions;
         const usage = this.get(id).usage;
@@ -167,9 +199,27 @@ export class DatasetAudits {
         result.attempts.push({ at: now(), decisions });
         await verifier.verify(batch.memory, signal); this.check(id, signal);
         const changes = this.changes(batch, decisions);
+        const finalQuestions = batch.samples.map((sample) => {
+          const change = changes.find((item) => item.id === sample.id);
+          return change?.action === "revise" ? change.question ?? sample.question : sample.question;
+        });
+        const answerInput: DatasetAnswerInput = { modelId: job.modelId, memory: input.memory, questions: finalQuestions };
+        const ready = changes.filter((change) => change.action === "approve" || change.action === "revise");
+        const answerChecks: Record<string, SampleAnswerCheck> = {};
+        if (ready.length) {
+          input.answerChecks = await this.answerQuestions(id, row, result, answerInput, signal);
+          for (const change of ready) {
+            const index = batch.samples.findIndex((sample) => sample.id === change.id), sample = batch.samples[index];
+            const trainingId = (change.evaluationOf || sample.evaluationOf)?.id;
+            const trainingIndex = sample.intendedUse === "evaluation" && trainingId ? batch.samples.findIndex((item) => item.id === trainingId) : undefined;
+            answerChecks[change.id] = checkedSampleAnswer(answerInput, input.answerChecks, index,
+              change.action === "revise" ? change.answer ?? sample.answer : sample.answer, trainingIndex);
+          }
+        }
+        await verifier.verify(batch.memory, signal); this.check(id, signal);
         const receipt = this.store.memories.transaction(() => {
           const applied = this.ledger.changeSamples(job.datasetId, changes, "按冻结正文逐题核验人物、所问关系、时间、答案与训练/评测关联", {
-            actor: "processor", jobId: id, modelId: job.modelId, protocolVersion: job.protocolVersion, requestKey: `audit:${id}:${row.ordinal}`,
+            actor: "processor", jobId: id, modelId: job.modelId, protocolVersion: job.protocolVersion, requestKey: `audit:${id}:${row.ordinal}`, answerChecks,
           });
           result.decisions = changes.map((change) => ({ id: change.id, previousVersion: change.version,
             version: applied.after.find((sample) => sample.id === change.id)!.version,
@@ -210,6 +260,7 @@ export class DatasetAudits {
   }
 
   private async run(id: string, signal: AbortSignal) {
+    this.assertProtocol(this.get(id));
     this.patch(id, { status: "running", error: undefined, phase: "reviewing" });
     for (;;) {
       this.check(id, signal);
@@ -234,12 +285,17 @@ export class DatasetAudits {
   }
   retry(id: string) {
     const job = this.get(id); this.assertIdle(job.datasetId);
+    this.assertProtocol(job);
     if (!["failed", "cancelled"].includes(job.status) || this.ledger.get(job.datasetId).stale)
       throw new UserFacingError(409, "AUDIT_UNAVAILABLE", "只有未完成且来源未过期的核验可重试");
     this.store.db.prepare("UPDATE dataset_audit_inputs SET status='pending' WHERE jobId=? AND status='failed'").run(id);
     const next = this.patch(id, { status: "queued", error: undefined, phase: "reviewing",
       counts: { ...job.counts, processed: job.counts.processed - job.counts.failed, failed: 0 } });
     this.wake(); return next;
+  }
+  private assertProtocol(job: DatasetAuditJob) {
+    if (job.protocolVersion !== DATASET_REVIEW_VERSION) throw new UserFacingError(409, "AUDIT_PROTOCOL_CHANGED",
+      "核验协议已更新，原作业与已完成结果保留；请针对当前待核对样本新建核验作业");
   }
   result(id: string, offset = 0, limit = 8, maxBytes = 12000) {
     const audit = this.get(id), response = { audit, decisions: [] as DatasetAuditDecision[], nextOffset: null as number | null,

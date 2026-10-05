@@ -6,6 +6,10 @@ import { extractPhotoMemories, type PhotoExtractionInput, type PhotoExtractionRe
 import { captureMemories, type CaptureInput, type CaptureResult } from "../../memory-capture-extraction.js";
 import { generateDatasetQuestions, type DatasetQuestionInput, type DatasetQuestionResult } from "../../dataset-question-generation.js";
 import { reviewDatasetSamples, type DatasetQualityInput } from "../../dataset-quality-review.js";
+import { answerDatasetQuestions } from "./dataset-answer-checker.js";
+import type { DatasetAnswerInput } from "../../memory/dataset-answer-checks.js";
+import { organizeActivities } from "./activity-organizer.js";
+import type { ActivityExtractionInput } from "../../memory/activity-extraction.js";
 
 import type { MemoryProcessors } from "../../memory/processors.js";
 export type { MemoryProcessors } from "../../memory/processors.js";
@@ -20,6 +24,10 @@ export class PiMemoryProcessors implements MemoryProcessors {
   }
 
   hasModel(modelId: string) { return this.config.providers.some((item) => item.model.id === modelId); }
+
+  async organizeActivities(input: ActivityExtractionInput, signal: AbortSignal) {
+    return organizeActivities(await this.models.get(), this.provider(input.modelId), input, signal);
+  }
 
   async extractMemories(input: ExtractionInput, signal: AbortSignal) {
     return extractMemories(await this.models.get(), this.provider(input.modelId), input, signal);
@@ -39,5 +47,9 @@ export class PiMemoryProcessors implements MemoryProcessors {
 
   async reviewDatasetSamples(input: DatasetQualityInput, signal: AbortSignal) {
     return reviewDatasetSamples(await this.models.get(), this.provider(input.modelId), input, signal);
+  }
+
+  async answerDatasetQuestions(input: DatasetAnswerInput, signal: AbortSignal) {
+    return answerDatasetQuestions(await this.models.get(), this.provider(input.modelId), input, signal);
   }
 }

@@ -5,7 +5,7 @@ import { Database, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,7 +16,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { api, apiFile } from "@/lib/api";
+import { api, downloadFile } from "@/lib/api";
 import { auditActive, DatasetAuditControls } from "./dataset-audit";
 
 const statuses = { queued: "排队中", running: "构建中", completed: "已构建", failed: "未完成", cancelled: "已取消", skipped: "已跳过" };
@@ -119,10 +119,7 @@ function DatasetSamples({ id, models, onClose, onOpen, onChanged, onRebuild, onP
     if (busy) return;
     setBusy(true); setError("");
     try {
-      const blob = await apiFile(`/memory-datasets/${id}/files/${kind}`);
-      const url = URL.createObjectURL(blob), link = document.createElement("a");
-      link.href = url; link.download = kind + (kind === "manifest" ? ".json" : ".jsonl"); link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadFile(`/memory-datasets/${id}/files/${kind}`, kind + (kind === "manifest" ? ".json" : ".jsonl"));
     } catch (failure) { setError(failure instanceof Error ? failure.message : "下载失败"); }
     finally { setBusy(false); }
   }
@@ -189,6 +186,12 @@ function DatasetSamples({ id, models, onClose, onOpen, onChanged, onRebuild, onP
         <AccordionTrigger className="min-w-0 flex-1"><span className="flex min-w-0 flex-1 flex-col gap-2"><span className="break-words">{sample.question}</span><span className="flex flex-wrap gap-2"><Badge variant="outline">{sample.intendedUse === "evaluation" ? "评测" : "训练"}</Badge><Badge variant="outline">{sample.stale ? "已过期" : sample.quality?.issues.some((issue) => issue.severity === "blocking") ? "需修订" : sample.status === "ready" ? "可导出" : sample.status === "excluded" ? "已排除" : "待核对"}</Badge>{sample.reusedFrom && <Badge variant="outline">沿用</Badge>}{sample.review?.actor === "agent" && <Badge variant="outline">{sample.status === "ready" ? "Agent 已核对" : sample.status === "excluded" ? "Agent 已排除" : "Agent 留待核对"}</Badge>}{sample.review?.actor === "processor" && <Badge variant="outline">模型审阅</Badge>}</span></span></AccordionTrigger></div>
       <AccordionContent><div className="flex flex-col gap-3"><p className="whitespace-pre-wrap text-sm">{sample.answer}</p>
         {sample.review?.reason && <Field><FieldLabel>核对依据</FieldLabel><p className="whitespace-pre-wrap">{sample.review.reason}</p></Field>}
+        {sample.answerCheck && <FieldGroup data-testid="sample-answer-check">
+          <Field><FieldTitle>来源作答</FieldTitle><p className="break-words whitespace-pre-wrap">{sample.answerCheck.answerQuote}</p>
+            <FieldDescription>{sample.answerCheck.reason}</FieldDescription></Field>
+          <Field><FieldTitle>原文片段</FieldTitle>{sample.answerCheck.evidenceQuotes.map((quote, index) =>
+            <p key={index} className="break-words whitespace-pre-wrap">{quote}</p>)}</Field>
+        </FieldGroup>}
         {sample.intendedUse === "evaluation" && pairedTraining(sample) && <FieldGroup>
           <Field><FieldLabel>关联训练题 · v{pairedTraining(sample)!.version}</FieldLabel><p className="whitespace-pre-wrap">{pairedTraining(sample)!.question}</p></Field>
           <Field><FieldLabel>训练答案</FieldLabel><p className="whitespace-pre-wrap">{pairedTraining(sample)!.answer}</p></Field>

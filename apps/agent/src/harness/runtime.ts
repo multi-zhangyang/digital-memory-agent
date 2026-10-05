@@ -9,30 +9,21 @@ export interface RuntimePromptOptions {
   runId: string;
   thinkingLevel?: ThinkingLevel;
   notification?: { id: string; content: unknown };
+  recovery?: { id: string; run: Run };
 }
 
-export type RuntimeEvent =
-  | { type: "text" | "reasoning"; delta: string }
-  | { type: "notice"; text: string; state: "running" | "complete" | "error" }
-  | { type: "tool-update"; id: string; output: unknown }
-  | { type: "queue"; texts: readonly string[]; followUp: readonly string[] }
-  | {
-      type: "tool-start";
-      id: string;
-      name: string;
-      input: unknown;
-      parentToolCallId?: string;
-    }
-  | { type: "tool-end"; id: string; output: unknown; error: boolean }
-  | { type: "usage"; usage: NonNullable<Run["usage"]> };
+export type RuntimeEvent = import("@memory/contracts").ExecutionEvent;
 
 export interface AgentRuntime {
   state?(conversationId: string, modelId: string): Promise<SessionState>;
+  activeEntries?(conversationId: string): Promise<string[]>;
   steer?(
     conversationId: string,
     text: string,
     mode?: "steer" | "followUp",
-  ): Promise<void>;
+  ): Promise<"queued" | "handled" | void>;
+  clearQueue?(conversationId: string): Promise<{ steering: string[]; followUp: string[] }>;
+  navigate?(conversationId: string, modelId: string, entryId: string): Promise<{ cancelled: boolean; editorText?: string }>;
   compact?(
     conversationId: string,
     modelId: string,

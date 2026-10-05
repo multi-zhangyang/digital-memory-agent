@@ -173,14 +173,13 @@ test("Pi tools create versioned results and proposed memories, then recall the c
   await start(page, "整理我的公园散步经历");
   await settle(page);
   const taskUrl = page.url();
-  await page.getByRole("button", { name: "执行记录", exact: true }).click();
   await expect(page.getByTestId("tool-activity")).toHaveCount(6);
   const readTool = page.getByTestId("tool-activity").nth(2);
   await readTool.getByRole("button").first().click();
   await expect(
     readTool.getByText(sourceText("公园散步.txt"), { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /公园散步 · 经历整理/ }).click();
+  await page.getByTestId("run-thread").getByRole("button", { name: /公园散步 · 经历整理/ }).click();
   await expect(
     page.getByRole("heading", { name: "经历记录", exact: true }),
   ).toBeVisible();
@@ -248,7 +247,8 @@ test("Pi tools create versioned results and proposed memories, then recall the c
   await expect(
     page.getByRole("button", { name: "我的公园记忆", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByRole("tab", { name: "时间线", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "2026-10-04", exact: true }),
@@ -324,7 +324,7 @@ test("asks for an answer, resumes the tool, and exposes real provider failures",
     "failed",
     { timeout: 25000 },
   );
-  await expect(page.getByTestId("run-thread").getByRole("alert")).toBeVisible();
+  await expect(page.getByTestId("run-thread").getByRole("alert").filter({ hasText: "模型请求失败" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "重新运行", exact: true }),
   ).toBeEnabled();
@@ -462,7 +462,8 @@ test("mobile completes a task and confirms its memory in the inspector", async (
   });
   await page.getByRole("button", { name: "关闭工作区" }).click();
   await page.getByRole("button", { name: "切换侧栏" }).click();
-  await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "个人记忆", exact: true }),
   ).toBeVisible();

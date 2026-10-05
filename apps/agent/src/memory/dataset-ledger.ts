@@ -5,7 +5,7 @@ import type { MemoryData } from "./data.js";
 import { memoryEligibility } from "./retrieval.js";
 import { UserFacingError } from "../errors.js";
 import { normalizeFact } from "./values.js";
-import { validateReviewedSample, type SampleChange, type SampleReviewContext, type SampleReviewReceipt } from "./dataset-review.js";
+import { validateReviewedSample, validateSampleAnswerCheck, type SampleChange, type SampleReviewContext, type SampleReviewReceipt } from "./dataset-review.js";
 import { sampleTimeQuality } from "./dataset-time-review.js";
 import { DatasetPairings } from "./dataset-pairing.js";
 
@@ -270,7 +270,7 @@ export class DatasetLedger {
     if (!changes.length || changes.length > 50 || new Set(changes.map((change) => change.id)).size !== changes.length) throw new UserFacingError(400, "INVALID_REFS", "请选择 1 至 50 条不同的样本");
     const requestKey = context.requestKey || randomUUID();
     const payloadHash = createHash("sha256").update(JSON.stringify([id, changes, reason, context.actor, context.runId,
-      ...(context.actor === "processor" ? [context.jobId, context.modelId, context.protocolVersion] : []),
+      ...(context.actor === "processor" ? [context.jobId, context.modelId, context.protocolVersion, context.answerChecks] : []),
     ])).digest("hex");
     const previousCommand = this.store.db.prepare("SELECT data,payloadHash FROM dataset_review_commands WHERE requestKey=?").get(requestKey) as { data: string; payloadHash: string } | undefined;
     if (previousCommand) {
@@ -315,10 +315,15 @@ export class DatasetLedger {
           authority: ["exclude", "defer"].includes(change.action) ? "unreviewed" : context.actor === "user" ? "user-confirmed" : context.actor === "processor" ? "processor-reviewed" : "agent-reviewed",
           review: { actor: context.actor, runId: context.runId, jobId: context.jobId, modelId: context.modelId,
             protocolVersion: context.protocolVersion, reason: reviewReason, createdAt: now() },
+          answerCheck: undefined,
           checks: [...previous.checks.filter((check) => check !== "question-semantics-require-review" && check !== "evaluation-pair-require-review"),
             ...(change.action === "defer" ? ["question-semantics-require-review"] : []), `${context.actor}-review: ${reviewReason.slice(0, 500)}`] };
         if (sample.status === "ready") {
           const memories = this.sampleSources(sample);
+          if (context.actor === "processor") {
+            sample.answerCheck = context.answerChecks?.[sample.id];
+            validateSampleAnswerCheck(sample, memories, sample.answerCheck, context.modelId);
+          }
           validateReviewedSample(sample, memories);
           sample.quality = sampleTimeQuality(sample, memories);
           sample.checks = [...sample.checks.filter((check) => check !== "time-grounding-v1"), "time-grounding-v1"];
@@ -341,7 +346,7 @@ export class DatasetLedger {
           const needsReview = (semanticChange || previous.evaluationOf?.version !== previousTraining.version) && previous.status !== "excluded";
           const sample: TrainingSample = { ...previous, version: Number(row.version) + 1,
             evaluationOf: { id: training.id, version: training.version },
-            ...(needsReview ? { status: "review", authority: "unreviewed", review: undefined,
+            ...(needsReview ? { status: "review", authority: "unreviewed", review: undefined, answerCheck: undefined,
               checks: [...previous.checks.filter((check) => !/^(user|agent|processor)-review:/.test(check)), "evaluation-pair-require-review"] } : {}),
           };
           replacements.set(sample.id, sample);

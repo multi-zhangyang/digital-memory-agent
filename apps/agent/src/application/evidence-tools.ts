@@ -20,7 +20,8 @@ export function createEvidenceTools(store: Store, config: AppConfig, evidence: E
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })) }, { additionalProperties: false }),
     async execute(_id, input, signal) {
       const { scope } = current();
-      const result = await evidence.search({ ...input, personId: input.personId ?? undefined, entityId: input.entityId ?? undefined }, scope, signal);
+      const result = await evidence.search({ ...input, assetIds: input.assetIds?.length ? input.assetIds : undefined,
+        personId: input.personId ?? undefined, entityId: input.entityId ?? undefined }, scope, signal);
       return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: {} };
     },
   }), defineTool({ name: "read_evidence", label: "读取原始证据",
@@ -28,16 +29,21 @@ export function createEvidenceTools(store: Store, config: AppConfig, evidence: E
     parameters: Type.Object({ id: Type.String({ pattern: "^(asset|frame|observation):[0-9a-f-]{36}$" }), version: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Integer({ minimum: 1 })],
       { description: "For asset: use the exact SHA-256 string from task assets.version or search_evidence. Numeric 1 is NOT an asset version. Only observation: IDs use integer versions. Omit when unknown; never invent a version." })),
       offset: Type.Optional(Type.Integer({ minimum: 0 })), limit: Type.Optional(Type.Integer({ minimum: 4, maximum: 8000 })),
-      timestamp: Type.Optional(Type.Number({ minimum: 0, maximum: 7200, description: "Video time in seconds from its beginning. Omit for images/text. Use the source's requestedTimestamp to reproduce a video observation frame." })),
+      timestamp: Type.Optional(Type.Union([Type.Number({ minimum: 0, maximum: 7200 }), Type.Null()], { description: "For images/text set null. For video only, use seconds from its beginning or the source's requestedTimestamp to reproduce an observation frame." })),
       region: Type.Optional(Type.Union([Type.Object({ x: Type.Number({ minimum: 0, maximum: 1 }), y: Type.Number({ minimum: 0, maximum: 1 }),
         width: Type.Number({ exclusiveMinimum: 0, maximum: 1 }), height: Type.Number({ exclusiveMinimum: 0, maximum: 1 }) }, { additionalProperties: false }), Type.Null()])),
     }, { additionalProperties: false }),
     async execute(_id, input, signal) {
       signal?.throwIfAborted();
       const { run, scope } = current();
+      // Some strict-output providers populate optional video fields with zero.
+      // It has no meaning on an asset known to be text/image; positive times
+      // and fixed-frame conflicts still go through the normal validator.
+      const asset = input.id.startsWith("asset:") ? store.asset(input.id.slice(6)) : undefined;
+      const timestamp = input.timestamp == null || (input.timestamp === 0 && asset && asset.kind !== "video") ? undefined : input.timestamp;
       const vision = config.providers.find((provider) => provider.model.id === run.modelId)?.model.supportsImages === true;
-      if ((input.region || input.timestamp !== undefined) && !vision) throw new UserFacingError(400, "VISION_UNAVAILABLE", "当前任务模型未启用图片输入，不能读取局部或视频画面像素");
-      const { image, ...result } = await evidence.read(input.id, scope, { ...input, image: vision, signal });
+      if ((input.region || timestamp !== undefined) && !vision) throw new UserFacingError(400, "VISION_UNAVAILABLE", "当前任务模型未启用图片输入，不能读取局部或视频画面像素");
+      const { image, ...result } = await evidence.read(input.id, scope, { ...input, timestamp, image: vision, signal });
       signal?.throwIfAborted();
       const latest = current().run;
       if (latest.id !== run.id || latest.memoryEpoch !== run.memoryEpoch) throw new UserFacingError(409, "RUN_CHANGED", "任务或依据已改变，请重新读取");

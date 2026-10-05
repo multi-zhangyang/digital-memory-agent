@@ -19,6 +19,18 @@ async function responseFor(path: string, init?: RequestInit) {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> { return (await responseFor(path, init)).json() as Promise<T>; }
 export async function apiFile(path: string): Promise<Blob> { return (await responseFor(path)).blob(); }
 
+export async function downloadFile(path: string, filename: string, expectedHash?: string) {
+  const blob = await apiFile(path);
+  if (expectedHash) {
+    const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    if (hash !== expectedHash) throw new Error("文件已更新，需要重新核验交付");
+  }
+  const url = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = url; link.download = filename; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const assetUrl = (id: string, download = false) => "/api/assets/" + encodeURIComponent(id) + "/content" + (download ? "?download=1" : "");
 
 // Only server-issued dataset download routes are usable as local Markdown links.

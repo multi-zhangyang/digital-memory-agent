@@ -14,6 +14,7 @@ import { projectRoot } from "./config.js";
 import { browseDirectories, isWithin } from "./local-directories.js";
 import { UserFacingError, type AgentRuntime } from "./harness/runtime.js";
 import type { WorkspaceService } from "./workspace-service.js";
+import { extensionPresentation, savePresentation } from "./application/extension-ui.js";
 import {
   listProjectFiles,
   readProjectFile,
@@ -370,6 +371,7 @@ export function registerHarnessRoutes(
             id,
             name,
             transport: { enum: ["http", "stdio"] },
+            exposure: { enum: ["direct", "deferred"] },
             url: text(2048),
             command: text(1000),
             args: { type: "array", items: text(1000), maxItems: 50 },
@@ -483,8 +485,13 @@ export function registerHarnessRoutes(
         { interventions: [...(run.interventions || []), value] },
         "steering",
       );
+      if (["user", "approval", "recovery"].includes(run.waitingFor || "")) return { accepted: true };
       try {
-        await runtime().steer!(req.params.id, req.body.text, req.body.mode);
+        const disposition = await runtime().steer!(req.params.id, req.body.text, req.body.mode);
+        if (disposition === "handled") {
+          const latest = service.requireRun(run.id);
+          store.work.patchRun(run.id, { interventions: latest.interventions?.map((item) => item.id === value.id ? { ...item, status: "handled" } : item) }, "steering");
+        }
       } catch (e) {
         const latest = service.requireRun(run.id);
         store.work.patchRun(
@@ -501,6 +508,40 @@ export function registerHarnessRoutes(
       return { accepted: true };
     },
   );
+  app.patch<{ Params: { id: string }; Body: { text: string; revision?: string } }>("/api/conversations/:id/editor", {
+    schema: { body: object({ text: text(100000), revision: text(80) }, ["text"]) },
+  }, async (req) => {
+    service.conversation(req.params.id);
+    const current = extensionPresentation(store, req.params.id);
+    // A delayed browser save must not overwrite a newer extension prefill request.
+    if (current.editor?.source === "extension" && current.editor.revision !== req.body.revision)
+      return { editor: current.editor };
+    savePresentation(store, req.params.id, { ...current, editor: { text: req.body.text, revision: randomUUID(), source: "user" } }, false);
+    return { saved: true };
+  });
+  app.post<{ Params: { id: string } }>("/api/conversations/:id/queue/clear", async (req) => {
+    service.conversation(req.params.id);
+    const run = store.work.activeRun(req.params.id);
+    if (!run) return { texts: [] };
+    if (!runtime().clearQueue) throw new UserFacingError(501, "UNSUPPORTED", "运行时不支持清空队列");
+    const pendingIds = new Set(run.interventions?.filter((item) => item.status === "queued").map((item) => item.id));
+    await runtime().clearQueue!(req.params.id);
+    const latest = service.requireRun(run.id);
+    const pending = latest.interventions?.filter((item) => pendingIds.has(item.id) && item.status === "queued") || [];
+    store.work.patchRun(run.id, { interventions: latest.interventions?.map((item) => pendingIds.has(item.id) && item.status === "queued" ? { ...item, status: "returned" } : item) }, "queue-cleared");
+    return { texts: pending.map((item) => item.text) };
+  });
+  app.post<{ Params: { id: string }; Body: { entryId: string } }>("/api/conversations/:id/navigate", {
+    schema: { body: object({ entryId: text(80) }, ["entryId"]) },
+  }, async (req) => {
+    service.conversation(req.params.id);
+    if (service.busy(req.params.id) || commands.has(req.params.id) || store.work.activeRun(req.params.id))
+      throw new UserFacingError(409, "RUN_BUSY", "请先完成或停止当前任务");
+    if (!runtime().navigate) throw new UserFacingError(501, "UNSUPPORTED", "运行时不支持会话树导航");
+    commands.add(req.params.id);
+    try { return await runtime().navigate!(req.params.id, model(req.params.id), req.body.entryId); }
+    finally { commands.delete(req.params.id); }
+  });
   app.post<{ Params: { id: string }; Body: { instructions?: string } }>(
     "/api/conversations/:id/compact",
     { schema: { body: object({ instructions: text(2000) }) } },
@@ -589,14 +630,20 @@ export function registerHarnessRoutes(
       if (!approval || approval.status !== "pending")
         throw new UserFacingError(409, "APPROVAL_EXPIRED", "此请求已处理");
       const run = service.requireRun(approval.runId);
-      if (!["running", "waiting"].includes(run.status))
+      if (!["running", "waiting"].includes(run.status) || run.stopRequestedAt)
         throw new UserFacingError(409, "APPROVAL_EXPIRED", "任务已结束");
+      if (approval.expiresAt && Date.parse(approval.expiresAt) <= Date.now())
+        throw new UserFacingError(409, "APPROVAL_EXPIRED", "此请求已超时");
+      if (req.body.approved && approval.kind === "select" && !approval.options.includes(req.body.answer || ""))
+        throw new UserFacingError(400, "INVALID_ANSWER", "请选择请求提供的选项");
       store.harness.save("approval", {
         ...approval,
         status: req.body.approved ? "approved" : "denied",
+        resolution: "user",
         answer: req.body.answer,
       });
       store.work.patchRun(run.id, {}, "approval");
+      await service.approvalResolved(run.id);
       return { saved: true };
     },
   );

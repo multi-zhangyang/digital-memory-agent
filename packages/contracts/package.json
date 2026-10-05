@@ -13,7 +13,8 @@
     "./harness": "./src/harness.ts",
     "./memory": "./src/memory.ts",
     "./evidence": "./src/evidence.ts",
-    "./capabilities": "./src/capabilities.ts"
+    "./capabilities": "./src/capabilities.ts",
+    "./execution": "./src/execution.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

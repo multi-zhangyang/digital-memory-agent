@@ -79,6 +79,7 @@ import {
 } from "@/lib/workbench";
 import type {
   Asset,
+  ExtensionPresentation,
   ModelInfo,
   ProviderStatus,
   Run,
@@ -103,10 +104,13 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Queue, QueueItem, QueueItemContent, QueueList } from "@/components/ai-elements/queue";
 
 interface Props {
   compact?: boolean;
   draftKey: string;
+  conversationId?: string;
+  presentation?: ExtensionPresentation;
   fallbackDraft: TaskDraft;
   onDraft: (draft: TaskDraft) => void;
   assets: Asset[];
@@ -138,6 +142,8 @@ const thinkingLevels: ThinkingLevel[] = [
 export function WorkbenchComposer({
   compact = false,
   draftKey,
+  conversationId,
+  presentation,
   fallbackDraft,
   onDraft,
   assets,
@@ -193,6 +199,37 @@ export function WorkbenchComposer({
     latest.current = { ...latest.current, ...value };
     onDraft(latest.current);
   }
+  const [editorRequest, setEditorRequest] = useState<ExtensionPresentation["editor"]>();
+  const editorAcknowledged = useRef("");
+  function resolveEditor(editor: NonNullable<ExtensionPresentation["editor"]>, accept: boolean) {
+    editorAcknowledged.current = editor.revision;
+    try { localStorage.setItem("digital-memory.editor-request." + conversationId, editor.revision); } catch {}
+    if (accept) patch({ text: [latest.current.text, editor.text].filter(Boolean).join("\n\n") });
+    setEditorRequest(undefined);
+  }
+  useEffect(() => {
+    const editor = presentation?.editor;
+    if (!editor || editor.source !== "extension") return;
+    let acknowledged = editorAcknowledged.current;
+    try { acknowledged ||= localStorage.getItem("digital-memory.editor-request." + conversationId) || ""; } catch {}
+    if (acknowledged === editor.revision) { editorAcknowledged.current = acknowledged; return; }
+    if (latest.current.text.trim()) setEditorRequest(editor);
+    else resolveEditor(editor, true);
+  // Prefill is a one-time request, never a controlled value for the user's draft.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentation?.editor?.revision, conversationId]);
+  useEffect(() => {
+    if (!conversationId || editorRequest) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void api<{ editor?: ExtensionPresentation["editor"] }>("/conversations/" + conversationId + "/editor", {
+        method: "PATCH", signal: controller.signal, body: JSON.stringify({ text: draft.text, revision: editorAcknowledged.current || undefined }),
+      }).then((result) => { if (result.editor && !controller.signal.aborted) setEditorRequest(result.editor); }).catch(() => {});
+    }, 500);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [conversationId, draft.text, editorRequest]);
+  const widgets = (placement: "aboveEditor" | "belowEditor") => Object.entries(presentation?.widgets || {}).filter(([, widget]) => widget.placement === placement).map(([key, widget]) =>
+    <Queue key={key} className="my-2 border-0 p-2 shadow-none"><QueueList className="m-0"><QueueItem><QueueItemContent className="line-clamp-none whitespace-pre-wrap text-xs">{widget.lines.join("\n")}</QueueItemContent></QueueItem></QueueList></Queue>);
   useEffect(() => {
     if (running && (draft.fileReferences?.length || draft.assetIds.length))
       setSendMode("queue");
@@ -364,6 +401,11 @@ export function WorkbenchComposer({
           {error}
         </p>
       )}
+      {widgets("aboveEditor")}
+      {editorRequest && <Queue className="mb-2 p-3 shadow-none"><QueueList className="m-0"><QueueItem>
+        <QueueItemContent className="line-clamp-3 whitespace-pre-wrap">{editorRequest.text}</QueueItemContent>
+        <div className="flex items-center gap-2 pt-2"><span className="mr-auto text-xs text-muted-foreground">扩展输入</span><Button type="button" size="sm" variant="ghost" onClick={() => resolveEditor(editorRequest, false)}>忽略</Button><Button type="button" size="sm" variant="outline" onClick={() => resolveEditor(editorRequest, true)}>加入输入</Button></div>
+      </QueueItem></QueueList></Queue>}
       {uploadFailures.length > 0 && (
         <div className="mb-2 flex flex-col gap-2">
           {uploadFailures.map(({ file, error: failure }, index) => (
@@ -773,7 +815,7 @@ export function WorkbenchComposer({
                       >
                         <span className="hidden @2xl:inline">
                           {sendMode === "steer"
-                            ? "立即补充"
+                            ? "调整任务"
                             : sendMode === "followUp"
                               ? "完成后补充"
                               : "加入队列"}
@@ -787,7 +829,7 @@ export function WorkbenchComposer({
                         onValueChange={setSendMode}
                       >
                         <DropdownMenuRadioItem value="steer">
-                          立即补充指令
+                          调整当前任务
                         </DropdownMenuRadioItem>
                         <DropdownMenuRadioItem value="followUp">
                           本任务完成后补充
@@ -802,6 +844,7 @@ export function WorkbenchComposer({
                 {running && (
                   <PromptInputButton
                     aria-label="停止任务"
+                    disabled={!!running.stopRequestedAt}
                     onClick={onStop}
                     className="rounded-full"
                   >
@@ -812,7 +855,7 @@ export function WorkbenchComposer({
                   aria-label={
                     running
                       ? sendMode === "steer"
-                        ? "立即补充指令"
+                        ? "调整当前任务"
                         : sendMode === "followUp"
                           ? "本任务完成后补充"
                           : "加入队列"
@@ -831,6 +874,8 @@ export function WorkbenchComposer({
           </PromptInput>
         </div>
       </ComposerContextMenu>
+      {widgets("belowEditor")}
+      {Object.entries(presentation?.statuses || {}).filter(([key]) => !["notification", "working"].includes(key)).map(([key, value]) => <p key={key} className="mt-2 truncate text-xs text-muted-foreground" title={value}>{value}</p>)}
       {(dialog === "assets" || dialog === "commands") && (
         <CommandDialog
           open

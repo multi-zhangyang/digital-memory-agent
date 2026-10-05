@@ -23,13 +23,16 @@ test("background job progress survives a page reload and resumes the Agent while
   await page.goto("/?task=" + conversation.id);
   const thread = page.getByTestId("run-thread");
   const jobCard = thread.getByTestId("run-job");
-  await expect(thread).toHaveAttribute("data-run-status", "waiting");
-  await expect(jobCard).toHaveAttribute("data-job-status", "running");
-  await expect(thread.getByText("等待后台作业", { exact: true })).toBeVisible();
-  await page.reload();
-  await expect(jobCard).toHaveAttribute("data-job-status", "running");
-  await expect(thread).toHaveAttribute("data-run-status", "waiting");
-  expect((await request.post("http://127.0.0.1:4312/test/release-background")).ok()).toBeTruthy();
+  try {
+    await expect(thread).toHaveAttribute("data-run-status", "waiting");
+    await expect(jobCard).toHaveAttribute("data-job-status", "running");
+    await expect(thread.getByText("后台正在整理", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(jobCard).toHaveAttribute("data-job-status", "running");
+    await expect(thread).toHaveAttribute("data-run-status", "waiting");
+  } finally {
+    expect((await request.post("http://127.0.0.1:4312/test/release-background")).ok()).toBeTruthy();
+  }
   await expect(thread).toHaveAttribute("data-run-status", "completed");
   await expect(jobCard).toHaveAttribute("data-job-status", "completed");
   await expect(thread.getByText("后台处理完成，观察等待核对。", { exact: false })).toBeVisible();

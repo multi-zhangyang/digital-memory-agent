@@ -74,6 +74,7 @@ async function fixture(projectPath?: string) {
           ],
         ],
         mcp: [["mcp__fixture__echo", { text: "hello" }]],
+        "mcp-deferred": [["tool_search", { query: "fixture echo" }], ["mcp__fixture__echo", { text: "hello" }]],
         "nullable-artifact": [
           ["write_artifact", { title: "实际作业说明", content: "此条用于验证新建结果，不包含个人事实。", sourceAssetIds: [], artifactId: null, version: null }],
           ["read_artifact", { artifactId: null }],
@@ -426,6 +427,10 @@ it("runs native Pi file tools and a sandboxed script, streams output, persists r
   expect(run.parts.filter((p) => p.type === "tool").map((p) => p.name)).toEqual(
     ["read", "write", "bash", "edit", "read"],
   );
+  expect(run.inputEntryId).toEqual(expect.any(String));
+  const markers = run.parts.filter((part) => part.type === "message");
+  expect(markers.length).toBeGreaterThan(5);
+  expect(markers.every((part) => !!part.entryId && part.state === "complete")).toBe(true);
   expect(run.parts.some((p) => p.type === "reasoning")).toBe(true);
   expect(run.changes?.map((c) => c.path).sort()).toEqual([
     "result.json",
@@ -581,7 +586,31 @@ it("kills the entire isolated script process when cancelled", async () => {
   expect((await promise).exitCode).not.toBe(0);
   expect(output).toContain("执行已停止");
 });
-it("connects a real MCP protocol server and gates its native Pi tool call with an approval", async () => {
+it("clears native queued instructions and navigates a session branch without reverting files", async () => {
+  const f = await fixture();
+  const first = await f.wait((await f.start("write")).id);
+  const run = await f.start("steer");
+  for (let i = 0; i < 200; i++) {
+    const current = (await f.api("/runs/" + run.id, undefined, "GET")).run as Run;
+    if (current.parts.some((part) => part.type === "tool" && part.state === "running")) break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await f.api("/conversations/" + f.conversation.id + "/steer", { text: "withdrawn instruction", mode: "followUp" });
+  expect(await f.api("/conversations/" + f.conversation.id + "/queue/clear")).toEqual({ texts: ["withdrawn instruction"] });
+  const finished = await f.wait(run.id);
+  expect(finished.interventions?.[0].status).toBe("returned");
+  expect(finished.parts.some((part) => part.type === "message" && part.text === "withdrawn instruction")).toBe(false);
+  await f.api("/conversations/" + f.conversation.id + "/navigate", { entryId: first.entryId });
+  const timeline = await f.api("/conversations/" + f.conversation.id + "/timeline", undefined, "GET");
+  expect(timeline.runs.map((item: Run) => item.id)).toEqual([first.id]);
+  expect((await f.api("/projects/default/file?path=protected.txt", undefined, "GET")).content).toBe("written");
+  await f.wait((await f.start("new branch")).id);
+  const state = await f.api("/conversations/" + f.conversation.id + "/session", undefined, "GET") as SessionState;
+  expect(state.nodes.some((node) => node.text === "steer" && !node.active)).toBe(true);
+  expect(state.nodes.some((node) => node.text === "new branch" && node.active)).toBe(true);
+  expect(f.requests.at(-1).messages.some((message: any) => message.role === "user" && message.content === "steer")).toBe(false);
+});
+it.each(["direct", "deferred"] as const)("connects a real %s MCP protocol server and gates its native Pi tool call with an approval", async (exposure) => {
   const f = await fixture();
   const mcp = Fastify();
   mcp.post<{
@@ -630,6 +659,7 @@ it("connects a real MCP protocol server and gates its native Pi tool call with a
   const settings = await f.api("/harness/mcp", {
     name: "fixture",
     transport: "http",
+    exposure,
     url: "http://127.0.0.1:" + address.port + "/mcp",
     command: "",
     args: [],
@@ -637,7 +667,7 @@ it("connects a real MCP protocol server and gates its native Pi tool call with a
     headers: { Authorization: "Bearer private-mcp-token" },
   });
   expect(JSON.stringify(settings)).not.toContain("private-mcp-token");
-  const run = await f.start("mcp", "ask");
+  const run = await f.start(exposure === "deferred" ? "mcp-deferred" : "mcp", "ask");
   await f.wait(run.id, "waiting");
   const a = await f.api("/runs/" + run.id + "/approvals", undefined, "GET");
   expect(a.approvals[0].title).toBe("mcp__fixture__echo");
@@ -652,6 +682,12 @@ it("connects a real MCP protocol server and gates its native Pi tool call with a
   expect(state.tools.some((t: any) => t.name === "mcp__fixture__echo")).toBe(
     true,
   );
+  expect(state.resources).toContainEqual(expect.objectContaining({ kind: "mcp", name: "fixture", state: "loaded" }));
+  if (exposure === "deferred") {
+    expect(f.requests[0].tools.some((tool: any) => tool.function.name === "tool_search")).toBe(true);
+    expect(f.requests[0].tools.some((tool: any) => tool.function.name === "mcp__fixture__echo")).toBe(false);
+    expect(end.parts).toContainEqual(expect.objectContaining({ type: "tool", name: "tool_search", state: "complete" }));
+  }
 });
 it("runs a stdio MCP server inside a read-only project sandbox and shuts it down with the Pi extension", async () => {
   const f = await fixture();

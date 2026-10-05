@@ -15,6 +15,13 @@ import { MemoryVectors } from "../src/memory-vectors.js";
 import type { MemoryProcessors } from "../src/memory-processors.js";
 import type { DatasetQuestionResult } from "../src/dataset-question-generation.js";
 import type { DatasetQualityDecision, DatasetQualityInput } from "../src/dataset-quality-review.js";
+import type { DatasetAnswerInput } from "../src/memory/dataset-answer-checks.js";
+
+// Explicit source-answer double for lifecycle fixtures whose questions all ask for the whole source.
+const fixtureAnswers: NonNullable<MemoryProcessors["answerDatasetQuestions"]> = async ({ memory, questions }) => ({
+  answers: questions.map((_, index) => ({ index, status: "answerable", answerQuote: memory.content, evidenceQuotes: [memory.content], factIndex: 0, reason: "固定协议样例均询问同一段交接正文" })),
+  usage: { input: 0, output: 0 },
+});
 
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -43,6 +50,7 @@ describe("independent frozen dataset pipeline (real SQLite and source files, no 
   it("audits by frozen source, repairs one rejected batch and preserves processor decisions, exact pairs and archive history", async () => {
     const inputs: DatasetQualityInput[] = [];
     const processors: MemoryProcessors = {
+      answerDatasetQuestions: fixtureAnswers,
       generateDatasetQuestions: async ({ memory }) => ({
         training: [{ question: `2025-03-02，${memory.title}确认了什么？`, answerQuote: memory.content },
           { question: `2025-03-02，${memory.title}有哪些记录内容？`, answerQuote: memory.content }],
@@ -69,12 +77,13 @@ describe("independent frozen dataset pipeline (real SQLite and source files, no 
     await f.service.idle();
     const job = f.service.audits.submit({ datasetId: dataset.id, revision: f.service.ledger.get(dataset.id).revision, requestKey: randomUUID(), modelId: "configured/reviewer" });
     await f.service.audits.idle();
-    expect(f.service.audits.get(job.id)).toMatchObject({ status: "completed", counts: { total: 6, processed: 6, approved: 4, revised: 2, failed: 0 }, usage: { calls: 3, input: 300, output: 180 } });
-    expect(inputs).toHaveLength(3); expect(inputs[1].repair?.error).toContain("冻结");
+    expect(f.service.audits.get(job.id)).toMatchObject({ status: "completed", counts: { total: 6, processed: 6, approved: 4, revised: 2, failed: 0 }, usage: { calls: 7, input: 300, output: 180 } });
+    expect(inputs).toHaveLength(3); expect(inputs[1].repair?.error).toContain("来源作答不一致");
     expect(inputs.every((input) => input.samples.length === 3 && [first.entry.content, second.entry.content].includes(input.memory.content))).toBe(true);
     expect(f.store.memories.list("memory")).toEqual(before);
     const samples = f.service.ledger.samples(dataset.id);
     expect(samples.every((sample) => sample.version === 2 && sample.authority === "processor-reviewed" && sample.review?.jobId === job.id && sample.review.modelId === "configured/reviewer")).toBe(true);
+    expect(samples.every((sample) => sample.answerCheck?.question === sample.question && sample.answerCheck?.answerQuote === sample.answer)).toBe(true);
     for (const sample of samples.filter((sample) => sample.intendedUse === "evaluation"))
       expect(sample.evaluationOf).toEqual({ id: sample.evaluationOf!.id, version: 2 });
     expect(f.service.audits.result(job.id, 0, 2).decisions).toHaveLength(2);
@@ -110,15 +119,17 @@ describe("independent frozen dataset pipeline (real SQLite and source files, no 
     expect(secondPage.samples).toHaveLength(1);
     expect(secondPage.samples[0].id).not.toBe(pending.samples[0].id);
     expect(service.ledger.pairings.get(dataset.id, training.id)).toMatchObject({ question: training.question, answer: training.answer, status: "review", review: { actor: "agent", reason: "交接事件的具体时间待核对" } });
+    expect(service.ledger.pairings.get(dataset.id, evaluation.id)?.answerCheck).toBeUndefined();
     expect((await service.delivery(dataset.id)).files.find((file) => file.kind === "review")?.records).toBe(2);
     expect((await service.inspect(dataset.id, { view: "ready", sampleIds: [training.id, other.id] })).samples.map((sample) => sample.id)).toEqual([other.id]);
     expect(reopened.memories.list("memory")).toEqual(before);
   });
 
   it("cancels an in-flight audit without committing late decisions and resumes only pending sources after a service restart", async () => {
-    let calls = 0, entered!: () => void, finish!: (value: { decisions: DatasetQualityDecision[]; usage: { input: number; output: number } }) => void;
+    let calls = 0, answerCalls = 0, entered!: () => void, finish!: (value: { decisions: DatasetQualityDecision[]; usage: { input: number; output: number } }) => void;
     const enteredSecond = new Promise<void>((resolve) => { entered = resolve; });
     const processors: MemoryProcessors = {
+      answerDatasetQuestions: async (...args) => { answerCalls++; return fixtureAnswers(...args); },
       generateDatasetQuestions: async ({ memory }) => ({
         training: [{ question: `2025-03-02，${memory.title}的内容是什么？`, answerQuote: memory.content }],
         evaluation: [{ trainingIndex: 0, question: `2025-03-02，${memory.title}确认了哪些内容？`, answerQuote: memory.content }], usage: { input: 1, output: 1 },
@@ -146,6 +157,7 @@ describe("independent frozen dataset pipeline (real SQLite and source files, no 
     resumed.audits.retry(job.id); await resumed.audits.idle();
     expect(resumed.audits.get(job.id)).toMatchObject({ status: "completed", counts: { processed: 4, approved: 4 } });
     expect(calls).toBe(3);
+    expect(answerCalls).toBe(2); // The interrupted source already has a durable source-only answer.
     expect(resumed.ledger.samples(dataset.id).filter((sample) => saved.some((previous) => previous.id === sample.id))).toEqual(saved);
     expect((await resumed.delivery(dataset.id)).verified).toBe(true);
     const cancelled = resumed.audits.submit({ datasetId: dataset.id, revision: resumed.ledger.get(dataset.id).revision, requestKey: randomUUID(), modelId: "configured/reviewer", mode: "all" });
@@ -169,6 +181,109 @@ describe("independent frozen dataset pipeline (real SQLite and source files, no 
     expect(resumed.audits.get(cancelled.id).status).toBe("cancelled");
     expect((await resumed.delivery(dataset.id)).partial).toBe(true);
     expect(resumed.ledger.sampleCount(dataset.id, { view: "review" })).toBe(2);
+  });
+
+  it("preserves interrupted old-protocol audits without replaying them under a new protocol", async () => {
+    let calls = 0;
+    const processors: MemoryProcessors = {
+      generateDatasetQuestions: async ({ memory }) => ({
+        training: [{ question: "2025-03-02，交接记录是什么？", answerQuote: memory.content }],
+        evaluation: [{ trainingIndex: 0, question: "2025-03-02，记载了哪些交接内容？", answerQuote: memory.content }], usage: { input: 0, output: 0 },
+      }),
+      answerDatasetQuestions: async (...args) => { calls++; return fixtureAnswers(...args); },
+      reviewDatasetSamples: async (input) => {
+        calls++;
+        return { decisions: input.samples.map((_, index) => ({ index, action: "approve", question: null, answerQuote: null,
+          trainingIndex: null, reason: "固定交接正文与题目一致" })), usage: { input: 0, output: 0 } };
+      },
+    };
+    const f = await fixture(processors);
+    await f.memory({ content: "林舟把钥匙交给陈默。" });
+    const dataset = f.service.submit({ requestKey: randomUUID(), modelId: "configured/model" }); await f.service.idle();
+    const old = f.service.audits.submit({ datasetId: dataset.id, revision: f.service.ledger.get(dataset.id).revision,
+      requestKey: randomUUID(), modelId: "configured/model" });
+    f.service.audits.cancel(old.id); await f.service.audits.idle(); await f.service.idle();
+    const before = f.service.ledger.samples(dataset.id);
+    await f.service.close();
+    f.store.db.prepare("UPDATE dataset_audits SET status='running',data=json_set(data,'$.protocolVersion',1) WHERE id=?").run(old.id);
+    const resumed = new DatasetService(f.store, () => processors); cleanup.push(() => resumed.close());
+    await resumed.audits.idle();
+    expect(resumed.audits.get(old.id)).toMatchObject({ status: "failed", protocolVersion: 1 });
+    expect(resumed.audits.get(old.id).error).toContain("协议已更新");
+    expect(() => resumed.audits.retry(old.id)).toThrow("新建核验作业");
+    expect(resumed.ledger.samples(dataset.id)).toEqual(before);
+    expect(calls).toBe(0);
+    const current = resumed.audits.submit({ datasetId: dataset.id, revision: resumed.ledger.get(dataset.id).revision,
+      requestKey: randomUUID(), modelId: "configured/model" });
+    await resumed.audits.idle();
+    expect(resumed.audits.get(current.id).status).toBe("completed");
+    expect(calls).toBe(2);
+    expect(resumed.audits.get(old.id)).toMatchObject({ status: "failed", protocolVersion: 1 });
+  });
+
+  it("blocks a reviewer that repeatedly approves a wrong but verbatim answer and reuses the completed source check", async () => {
+    const answerInputs: DatasetAnswerInput[] = [], reviewInputs: DatasetQualityInput[] = [];
+    const f = await fixture({
+      generateDatasetQuestions: async () => ({
+        training: [{ question: "2025-03-02，谁把雨伞借给了陆青？", answerQuote: "陆青" }],
+        evaluation: [{ question: "2025-03-02，陆青从谁那里借到雨伞？", answerQuote: "陆青", trainingIndex: 0 }], usage: { input: 0, output: 0 },
+      }),
+      answerDatasetQuestions: async (input) => {
+        answerInputs.push(structuredClone(input));
+        return { answers: input.questions.map((_, index) => ({ index, status: "answerable", answerQuote: "沈禾", evidenceQuotes: [input.memory.content], factIndex: 0, reason: "正文明确沈禾为借出人" })), usage: { input: 20, output: 10 } };
+      },
+      reviewDatasetSamples: async (input) => {
+        reviewInputs.push(structuredClone(input));
+        return { decisions: input.samples.map((_, index) => ({ index, action: "approve", question: null, answerQuote: null, trainingIndex: null, reason: "有意错误的认可测试替身" })), usage: { input: 30, output: 10 } };
+      },
+    });
+    const { entry } = await f.memory({ title: "借伞", content: "2025-03-02，沈禾把雨伞借给陆青。" });
+    const job = f.service.submit({ requestKey: randomUUID(), modelId: "configured/model" }); await f.service.idle();
+    const before = f.service.ledger.samples(job.id);
+    const audit = f.service.audits.submit({ datasetId: job.id, revision: f.service.ledger.get(job.id).revision, modelId: "configured/model", requestKey: randomUUID() });
+    await f.service.audits.idle();
+    expect(f.service.audits.get(audit.id)).toMatchObject({ status: "failed", counts: { failed: 2, approved: 0 }, usage: { calls: 3, input: 80, output: 30 } });
+    expect(answerInputs).toHaveLength(1); expect(Object.keys(answerInputs[0]).sort()).toEqual(["memory", "modelId", "questions"]);
+    expect(reviewInputs).toHaveLength(2); expect(reviewInputs[1].repair?.error).toContain("来源作答不一致");
+    expect(f.service.ledger.samples(job.id)).toEqual(before);
+    expect(f.store.memories.get<MemoryEntry>("memory", entry.id)?.version).toBe(1);
+    const history = JSON.parse(String(f.store.db.prepare("SELECT result FROM dataset_audit_inputs WHERE jobId=?").get(audit.id)!.result));
+    expect(history.answerChecks).toHaveLength(1); expect(history.attempts).toHaveLength(2);
+    const training = await f.service.download(job.id, "training");
+    let text = ""; for await (const bytes of training.stream) text += bytes.toString();
+    expect(text).toBe("");
+  });
+
+  it("rechecks revised questions without candidate answers and defers unsupported premises after repair", async () => {
+    const inputs: DatasetAnswerInput[] = [];
+    const f = await fixture({
+      generateDatasetQuestions: async () => ({
+        training: [{ question: "2025-03-02，转交给宋伊的旅行箱是什么颜色？", answerQuote: "蓝色" }],
+        evaluation: [{ question: "2025-03-02，宋伊收到的旅行箱呈什么颜色？", answerQuote: "蓝色", trainingIndex: 0 }], usage: { input: 0, output: 0 },
+      }),
+      answerDatasetQuestions: async (input) => {
+        inputs.push(structuredClone(input));
+        return { answers: input.questions.map((question, index) => question.includes("自己购买")
+          ? { index, status: "unsupported" as const, answerQuote: null, evidenceQuotes: [input.memory.content], factIndex: null, reason: "来源只说明接收，不说明购买" }
+          : { index, status: "answerable" as const, answerQuote: "蓝色", evidenceQuotes: [input.memory.content], factIndex: 0, reason: "同一交接物品的颜色" }), usage: { input: 10, output: 10 } };
+      },
+      reviewDatasetSamples: async (input) => ({ decisions: input.samples.map((_, index) => ({ index,
+        action: input.repair ? "defer" as const : "revise" as const,
+        question: input.repair ? null : `2025-03-02，宋伊自己购买的旅行箱${index ? "呈什么颜色" : "是什么颜色"}？`,
+        answerQuote: null, trainingIndex: null, reason: input.repair ? "购买前提没有来源，保留待核对" : "故意引入购买前提的测试替身",
+      })), usage: { input: 10, output: 10 } }),
+    });
+    await f.memory({ content: "2025-03-02，邱野把蓝色旅行箱交给宋伊。旅行箱归谁所有没有记录。" });
+    const job = f.service.submit({ requestKey: randomUUID(), modelId: "configured/model" }); await f.service.idle();
+    const before = f.service.ledger.samples(job.id);
+    const audit = f.service.audits.submit({ datasetId: job.id, revision: f.service.ledger.get(job.id).revision, requestKey: randomUUID(), modelId: "configured/model" });
+    await f.service.audits.idle();
+    expect(f.service.audits.get(audit.id)).toMatchObject({ status: "completed", counts: { deferred: 2, failed: 0 }, usage: { calls: 4 } });
+    expect(inputs).toHaveLength(2); expect(inputs[0].questions.every((question) => !question.includes("自己购买"))).toBe(true);
+    expect(inputs[1].questions.every((question) => question.includes("自己购买"))).toBe(true);
+    const after = f.service.ledger.samples(job.id);
+    expect(after.every((sample) => sample.version === 2 && sample.status === "review" && !sample.answerCheck)).toBe(true);
+    expect(after.map((sample) => sample.question)).toEqual(before.map((sample) => sample.question));
   });
 
   it("rebuilds only a corrected input, retaining unchanged reviewed and excluded samples with exact version lineage", async () => {

@@ -15,10 +15,19 @@ export interface Conversation {
   pinned?: boolean;
   archived?: boolean;
   status?: RunStatus;
-  waitingFor?: "jobs" | null;
+  waitingFor?: "jobs" | "user" | "approval" | "recovery" | null;
 }
 
-export type ChatPart =
+export interface ChatPartPosition {
+  id?: string;
+  messageId?: string;
+  turnId?: string;
+  entryId?: string;
+  contentIndex?: number;
+}
+
+export type ChatPart = ChatPartPosition & (
+  | { type: "message"; role: "user" | "assistant"; text?: string; state: "streaming" | "complete" | "error" | "interrupted"; initial?: boolean }
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "notice"; text: string; state: "running" | "complete" | "error" }
@@ -27,13 +36,14 @@ export type ChatPart =
       toolCallId: string;
       name: string;
       input: unknown;
-      state: "running" | "complete" | "error" | "interrupted";
+      state: "input" | "running" | "complete" | "error" | "interrupted";
       output?: unknown;
       errorText?: string;
       parentToolCallId?: string;
+      stepId?: string;
       startedAt?: string;
       finishedAt?: string;
-    };
+    });
 
 export interface ToolInfo {
   name: string;
@@ -65,8 +75,24 @@ export type RunStatus =
   | "stopped";
 
 export interface PlanStep {
+  id?: string;
   title: string;
   status: "pending" | "running" | "completed";
+  resultIds?: string[];
+}
+
+export interface RunRecovery {
+  state: "ready" | "review" | "blocked";
+  reason: string;
+  attempts: number;
+  pendingToolIds: string[];
+  decisions?: { toolCallId: string; action: "skip" | "retry" }[];
+}
+export interface RunCheckpoint {
+  version: 1;
+  configuration: string;
+  entryId?: string;
+  savedAt: string;
 }
 
 export interface RunInput {
@@ -92,6 +118,13 @@ export interface Run extends RunInput {
   scope: "selected" | "library";
   useMemory: boolean;
   parts: ChatPart[];
+  presentationVersion?: 2;
+  phase?: "generating" | "tools" | "compacting" | "retrying" | "settled";
+  stopRequestedAt?: string;
+  inputEntryId?: string;
+  extensionUI?: import("./harness.js").ExtensionPresentation;
+  /** A response-only window into a run; never persisted as execution state. */
+  window?: { start: number; end: number };
   sources: SourceRef[];
   memoryIds: string[];
   memoryRevision?: number;
@@ -100,7 +133,11 @@ export interface Run extends RunInput {
   memoryTraces?: MemoryRetrievalTrace[];
   captureJobIds?: string[];
   jobs?: TaskJob[];
-  waitingFor?: "jobs" | null;
+  waitingFor?: "jobs" | "user" | "approval" | "recovery" | null;
+  checkpoint?: RunCheckpoint;
+  recovery?: RunRecovery;
+  receipts?: { toolCallId: string; name: string; output: unknown }[];
+  jobNotification?: { id: string; content: unknown };
   plan: PlanStep[];
   createdAt: string;
   startedAt?: string;
@@ -110,7 +147,8 @@ export interface Run extends RunInput {
   interventions?: RunIntervention[];
   entryId?: string;
   changes?: FileChange[];
-  question?: { text: string; options: string[]; answer?: string };
+  question?: { id?: string; toolCallId?: string; text: string; options: string[]; answer?: string };
+  questions?: NonNullable<Run["question"]>[];
   usage?: {
     input: number;
     output: number;
@@ -158,12 +196,15 @@ export interface Artifact {
 }
 
 export interface WorkspaceDetail {
+  presentation?: import("./harness.js").ExtensionPresentation;
   conversation: Conversation;
   runs: Run[];
   assets: Asset[];
   artifacts: Artifact[];
   memories: MemoryEntry[];
   legacyMessages: ChatMessage[];
+  page?: { before: string | null; hasMore: boolean };
+  activeEntryIds?: string[];
 }
 
 export interface AssetCollection {

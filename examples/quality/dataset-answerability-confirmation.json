@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "scope": "修复证据抄写协议后预先固定的另一组虚构来源，比较原协议与编号证据协议。不是真实经历；参考答案与风险标注不进入模型请求。开发者可见，非盲评。",
+  "cases": [
+    {
+      "id": "confirmation-delivery", "split": "confirmation",
+      "memory": { "title": "送达文件袋", "category": "event", "occurredAt": "2022-02-13", "content": "2022年2月13日，季原让陶汀把文件袋送到顾辞手中。送达后，顾辞将收条交给陶汀。" },
+      "training": [
+        { "question": "2022年2月13日，文件袋最终送到了谁手中？", "answerQuote": "季原", "referenceAnswer": "顾辞", "risk": "指派人不等于接收人" },
+        { "question": "2022年2月13日，顾辞把收条交给了谁？", "answerQuote": "陶汀", "referenceAnswer": "陶汀", "risk": null }
+      ],
+      "evaluation": [{ "question": "2022年2月13日，谁接收了陶汀送来的文件袋？", "trainingIndex": 0, "referenceAnswer": "顾辞", "risk": "同一送达事实，不能配到收条的接收人" }]
+    },
+    {
+      "id": "confirmation-reservation", "split": "confirmation",
+      "memory": { "title": "旅馆预订与入住", "category": "event", "occurredAt": "2022-08-15", "content": "2022年8月1日，夏禾预订了岳川旅馆2022年8月15日的房间。2022年8月15日，夏禾与方离入住旅馆。" },
+      "training": [
+        { "question": "夏禾何时预订了2022年8月15日的岳川旅馆房间？", "answerQuote": "2022年8月15日", "referenceAnswer": "2022年8月1日", "risk": "预订日期与入住日期不同" },
+        { "question": "2022年8月15日，与夏禾一同入住岳川旅馆的是谁？", "answerQuote": "方离", "referenceAnswer": "方离", "risk": null }
+      ],
+      "evaluation": [{ "question": "2022年8月15日的岳川旅馆房间，夏禾是在什么日期订好的？", "trainingIndex": 0, "referenceAnswer": "2022年8月1日", "risk": "必须与训练题一起修复为预订日" }]
+    },
+    {
+      "id": "confirmation-single-occurrence", "split": "confirmation",
+      "memory": { "title": "一次借车出行", "category": "event", "occurredAt": "2022-09-06", "content": "2022年9月6日，杜衡借用了乐安的银色折叠车，骑到乌桕公园。这里只记录了这一次行程，没有记录杜衡平时的交通习惯。" },
+      "training": [
+        { "question": "杜衡平时最喜欢骑什么车？", "answerQuote": "银色折叠车", "referenceAnswer": null, "risk": "借用一次不证明平时最喜欢，须限制为来源中的单次事件或待核对" },
+        { "question": "2022年9月6日，杜衡骑车去了哪里？", "answerQuote": "乌桕公园", "referenceAnswer": "乌桕公园", "risk": null }
+      ],
+      "evaluation": [{ "question": "杜衡日常最偏好的自行车是哪一种？", "trainingIndex": 0, "referenceAnswer": null, "risk": "评测也不能把单次观察扩大为偏好" }]
+    },
+    {
+      "id": "confirmation-same-place", "split": "confirmation",
+      "memory": { "title": "同一场所不同活动", "category": "event", "occurredAt": "2022-11-04", "content": "2022年11月4日，林夕在青禾馆参加读书会，苏砚在青禾馆领取画册。林夕当天讨论的书是《海岸线》。" },
+      "training": [
+        { "question": "2022年11月4日，林夕在哪里参加读书会？", "answerQuote": "青禾馆", "referenceAnswer": "青禾馆", "risk": null },
+        { "question": "2022年11月4日，林夕在读书会上讨论了哪本书？", "answerQuote": "《海岸线》", "referenceAnswer": "《海岸线》", "risk": null }
+      ],
+      "evaluation": [{ "question": "2022年11月4日，苏砚在哪里领取了画册？", "trainingIndex": 0, "referenceAnswer": "青禾馆", "risk": "同地点不等于同一人的同一活动事实；需要另行修订或待核对" }]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
+import type { Run } from "@memory/contracts";
 /** Versioned product instructions. Business pipelines execute in services, not this prompt. */
-export const digitalMemoryProfile = {
+const profileDefinition = {
   id: "digital-memory",
   version: 13,
   systemPrompt: [
@@ -34,3 +35,26 @@ export const digitalMemoryProfile = {
     { name: "prepare-dataset", description: "生成、核对并交付可训练与可评测的文件", content: "明确范围后用 build_dataset 提交作业。完成后 inspect_dataset 获取真实 ID 与 revision，用 audit_dataset 核验整批待审问答。后台按冻结来源独立处理并保存每题模型审阅。结束后检查待核对、失败和未支持样本，用 inspect_dataset 与 review_dataset 处理具体疑点。等待重新导出，再用 deliver_dataset 核验并交付下载链接、实际条数和限制；不能把导出描述为训练效果。" },
   ],
 } as const;
+
+
+const paragraphs = profileDefinition.systemPrompt.split("\n\n");
+const datasetRules = paragraphs.filter((text) => /^(?:build_dataset|评测题|检查样本|inspect_dataset|记忆纠正导致数据集)/u.test(text));
+const mediaRules = paragraphs.filter((text) => /^(?:素材整理后|视频 process_assets|本地原件索引|用户要求把素材)/u.test(text));
+const taskOnly = new Set([...datasetRules, ...mediaRules]);
+const activityRules = "生活照片与文字需要按具体活动整理时，使用 organize_memories，由独立服务处理新资料、检索已有候选并保存可撤销活动。后台返回后用 query_memory_activities 检查结果、当前版本和疑点。服务已经保存的观察与活动不再用 propose_memory 重建。候选、未知人物与不确定日期不能作为已确认事实；待核对事项集中说明，不逐张要求用户标注。用户明确确认、纠正、合并或拆分活动时调用 change_memory_activities，引用真实用户原话；更正地点或日期要同步更正标题、正文，其他事实保持原样。与已确认活动重叠的候选先核对合并或拆分，避免重复事件。已确认活动可用 search_memories/query_events 召回；待核对活动用 query_memory_activities/search_evidence 找到实际记录，不能把未确认误报为没有资料。任务中断后按持久计划、已回答问题、作业与命令回执继续，不重新执行已完成操作。";
+
+export const digitalMemoryProfile = {
+  ...profileDefinition,
+  version: 14,
+  systemPrompt: [...paragraphs.filter((text) => !taskOnly.has(text)), activityRules].join("\n\n"),
+  tasks: profileDefinition.tasks.map((task) => task.name === "organize-materials" ? { ...task, content: activityRules + "\n原件读取与 process_assets 用于具体资料处理和疑点核验；生活活动归组交给 organize_memories。视频保留时间定位；需要保存文档时复用现有结果和来源。" }
+    : task.name === "correct-memory" ? { ...task, content: "活动更正先用 query_memory_activities 读取当前版本，再以 change_memory_activities 执行；同步更正正文与结构字段。\n" + task.content } : task),
+};
+
+/** Select task guidance from actual instructions/work; it is never a substitute for execution permissions. */
+export function taskInstructionsFor(run: Run) {
+  const text = [run.goal || run.text, ...(run.interventions || []).filter((i) => i.status === "delivered").map((i) => i.text), run.question?.answer || ""].join("\n");
+  const dataset = /数据集|训练|样本|评测|问答|导出|dataset|training|evaluation/i.test(text) || run.jobs?.some((job) => ["memory-dataset", "dataset-audit"].includes(job.kind));
+  const media = run.assetIds.length > 0 || /照片|图片|视频|整理|素材|活动|photo|video|organize/i.test(text);
+  return [...(media ? mediaRules : []), ...(dataset ? datasetRules : [])].join("\n\n");
+}

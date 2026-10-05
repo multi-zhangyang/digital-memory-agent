@@ -6,7 +6,7 @@ export function toolUI(part: Extract<ChatPart, { type: "tool" }>): ToolUIPart {
     toolCallId: part.toolCallId,
     input: part.input,
     state:
-      part.state === "running"
+      part.state === "input" ? "input-streaming" : part.state === "running"
         ? "input-available"
         : part.state === "complete"
           ? "output-available"

@@ -26,8 +26,6 @@ test("shows the exact original crop in the conversation and restores evidence an
     const thread = page.locator("#run-" + run.id);
     await expect(thread).toHaveAttribute("data-run-status", "completed");
     const openEvidence = async () => {
-      const activity = thread.getByRole("button", { name: "执行记录", exact: true });
-      if (await activity.getAttribute("data-state") === "closed") await activity.click();
       const buttons = thread.getByRole("button", { name: /读取原始证据/ });
       await expect(buttons).toHaveCount(2);
       for (const button of await buttons.all()) if (await button.getAttribute("data-state") === "closed") await button.click();
@@ -66,7 +64,8 @@ test("keeps temporal review failures editable and downloads repaired questions f
   const records = (await (await request.get(`/api/memory-datasets/${dataset.id}/samples`)).json()).samples as TrainingSample[];
   expect(records).toHaveLength(3);
   expect(records.every((sample) => sample.quality?.issues.some((issue) => issue.code === "missing-event-time"))).toBe(true);
-  await page.goto("/"); await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.goto("/"); await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByTestId("memory-library").getByRole("button", { name: "数据集", exact: true }).click();
   await page.getByRole("dialog", { name: "数据集", exact: true }).getByTestId("dataset-row").filter({ hasText: title }).getByRole("button", { name: "查看样本" }).click();
   const dialog = page.getByRole("dialog", { name: title, exact: true });
@@ -75,7 +74,10 @@ test("keeps temporal review failures editable and downloads repaired questions f
   await dialog.getByLabel("核对依据", { exact: true }).fill("先尝试直接核对，用于检验日期检查。");
   await dialog.getByRole("button", { name: "确认所选样本", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("2024-02-29");
-  for (const [index, sample] of records.entries()) {
+  // Evaluation rows depend on reviewed training versions; API order is by stable
+  // sample ID and must not determine the order in which their prerequisites are fixed.
+  const reviewOrder = [...records].sort((a, b) => Number(a.intendedUse === "evaluation") - Number(b.intendedUse === "evaluation"));
+  for (const [index, sample] of reviewOrder.entries()) {
     const item = dialog.locator('[data-slot="accordion-item"]').filter({ hasText: sample.question });
     await item.getByRole("button", { name: new RegExp(sample.question) }).click();
     await item.getByRole("button", { name: "修订样本", exact: true }).click();

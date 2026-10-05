@@ -1,6 +1,6 @@
 # 独立工具质量评测
 
-这组固定材料用于检查精确编号、相近事件、纠正、日期、人物歧义、图像检索和视觉描述，不代表用户经历或个人参数记忆。开发题与保留题分别报告，修正固定后才运行保留题，不再依据这组保留结果调参。
+这组固定材料用于检查精确编号、相近事件、纠正、日期、人物歧义、图像检索和视觉描述，不代表用户经历或个人参数记忆。开发题与保留题分别报告，修正固定后才运行保留题；如果保留题后来用于诊断或调参，后续结果必须改记为开发回归，不能继续称为独立保留评测。
 
 `retrieval.json` 包含 41 条虚构记录、20 道开发题和 12 道保留题。确认状态仅为测试设定；查询证据关联当前记忆版本及原文范围。未知问题检查回答是否有依据，不要求向量检索返回空结果。
 
@@ -39,6 +39,16 @@ pnpm --filter @memory/agent eval:quality:photos --label current
 报告保存实际模型、协议、提取版本、清单与代码摘要、图片传输摘要、原始计量和逐图输出。计量包含 Pi 分开的输入、缓存读取与缓存写入；输入字段小不代表图片没有传入。新图对照及未采用的短提示见[阶段十六](../../docs/plans/0016-photo-processor.md)。
 
 `dataset-questions.json` 包含六条虚构开发记录及预先固定的核对项，覆盖交接方向、不同日期、历史状态、否定、未知日期和人物关系。运行 `pnpm --filter @memory/agent eval:dataset:questions` 会用已配置连接在隔离数据库中实际生成问题，`--model` 可指定一个已配置模型。报告保留逐题输出、来源版本、调用计量与代码摘要；所有题保持待核对。修正前后的同组运行只作开发回归，不作为独立保留集准确率，也不启动训练。
+
+`dataset-answerability.json` 固定六条开发来源和六条原保留来源，各含两道训练题和一道评测题，植入错误人物、错误日期、未知前提、泄题及同答案不同事实的配对。`dataset-answerability-confirmation.json` 另有四条后续对照来源。此评估器使用固定问题生成替身，只有来源作答和样本审阅调用真实模型；参考答案与风险标签不会发给模型。
+
+```bash
+pnpm --filter @memory/agent eval:dataset:answerability --split development --label current
+pnpm --filter @memory/agent eval:dataset:answerability --split holdout --label regression
+pnpm --filter @memory/agent eval:dataset:answerability --split confirmation --manifest dataset-answerability-confirmation.json --label current
+```
+
+命令读取已有供应商配置，可用 `--model` 选择已配置模型，`--case` 限定来源；会产生实际外部调用。每次新建隔离库，保存原始问答、调用、拒绝、实际文件和计量，语义对照初始标为 pending。原保留材料已用于修复引用抄写问题，后续材料也对开发者可见，均不得称为盲评。最终语义须对照实际题干和配对，不能只按原参考答案或 ready 数计准确率；历史结果与限制见[阶段 31](../../docs/plans/0031-dataset-answerability.md)。
 
 `media-review.json` 与 `archive-label.svg` 用于主 Agent 的原件局部复核、日期修复和连续任务验证。公开室内照片保留 CC0 来源和摘要，标签是程序绘制的确定性材料。评估器显式预置错误草稿，并在真实生成问题后删除一处日期，检验恢复过程；这些注入不冒充模型自然错误。三批新文字检验偏好采用、纠正及重启后持续使用。读取、修订和交付由真实 Pi/模型完成，评估器不代为审核，原始失败与独立像素核对均保留。
 

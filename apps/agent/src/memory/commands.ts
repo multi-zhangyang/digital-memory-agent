@@ -63,8 +63,15 @@ export class MemoryCommands {
         commandId TEXT NOT NULL REFERENCES memory_commands(id),recordId TEXT NOT NULL,version INTEGER NOT NULL,
         PRIMARY KEY(commandId,recordId,version));
       CREATE INDEX IF NOT EXISTS memory_commands_record ON memory_command_versions(recordId,version);
+      CREATE TABLE IF NOT EXISTS memory_command_messages(id TEXT PRIMARY KEY,conversationId TEXT NOT NULL,runId TEXT NOT NULL,text TEXT NOT NULL);
       INSERT OR IGNORE INTO memory_command_versions SELECT c.id,json_extract(v.value,'$.id'),json_extract(v.value,'$.version')
         FROM memory_commands c,json_each(c.data,'$.after') v;`);
+  }
+  recordForm(id: string, text: string): Extract<MemoryEvidence, { type: "message" }> {
+    const messageId = "form:" + id;
+    this.data.db.prepare("INSERT INTO memory_command_messages VALUES(?,?,?,?)").run(messageId, "activity-form", "activity-form", text);
+    return { type: "message", messageId, conversationId: "activity-form", runId: "activity-form",
+      sha256: createHash("sha256").update(text).digest("hex"), start: 0, end: Buffer.byteLength(text), quote: text };
   }
   memory(id: string, context: CommandContext, version?: number) {
     const entry = this.data.memories.get<MemoryEntry>("memory", id);

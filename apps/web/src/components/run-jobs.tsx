@@ -2,6 +2,7 @@
 
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
 import { ToolInput } from "@/components/ai-elements/tool";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { TaskJob } from "@memory/contracts";
@@ -33,7 +34,8 @@ export function RunJobs({ jobs }: { jobs: TaskJob[] }) {
               {job.progress.failed > 0 && <span>失败 {job.progress.failed}</span>}
             </div>
             {job.coverage && <p>资料 {job.coverage.total} · 已处理 {job.coverage.completed} · 已复用 {job.coverage.reused} · 失败 {job.coverage.failed} · 待完成 {job.coverage.pending}{job.coverage.blocked > 0 ? ` · 已停用 ${job.coverage.blocked}` : ""}</p>}
-            <ToolInput input={{ jobId: job.id, toolCallId: job.toolCallId }} />
+            {job.blockedReason && <p role="status">{job.blockedReason}</p>}
+            <Collapsible><CollapsibleTrigger asChild><Button variant="ghost" size="sm">作业详情<ChevronDown data-icon="inline-end" /></Button></CollapsibleTrigger><CollapsibleContent><ToolInput input={{ jobId: job.id, toolCallId: job.toolCallId }} /></CollapsibleContent></Collapsible>
           </TaskItem>
         ))}
       </TaskContent>

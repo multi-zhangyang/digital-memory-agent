@@ -162,6 +162,7 @@ export class MemoryLedger {
     indexMemory(this.db, memory);
     this.graph.sync(previous, memory);
     this.db.exec("UPDATE memory_meta SET revision=revision+1 WHERE id=1");
+    this.events.publish("memory.changed", memory.id, memory.version);
     const affectsContext =
       previous?.space !== "demo" &&
       previous !== undefined && previous.status !== "rejected" &&

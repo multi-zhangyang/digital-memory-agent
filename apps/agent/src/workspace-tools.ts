@@ -1,4 +1,5 @@
 import { Type } from "@earendil-works/pi-ai";
+import { randomUUID } from "node:crypto";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { Artifact, MemoryEntry, Run } from "@memory/contracts";
 import type { Store } from "./store.js";
@@ -32,7 +33,10 @@ export function createWorkspaceTools(store: Store, conversationId?: string) {
       parameters: Type.Object({
         steps: Type.Array(
           Type.Object({
+            id: Type.Optional(Type.String({ maxLength: 80 })),
             title: text(120),
+            resultIds: Type.Optional(Type.Array(Type.String({ maxLength: 120 }), { maxItems: 20,
+              description: "Only IDs actually returned in this task: jobs, memories, activities, artifacts, mN/sN/eN references, or asset:<id> for an original already read. Use [] when no result ID applies." })),
             status: Type.Union([
               Type.Literal("pending"),
               Type.Literal("running"),
@@ -44,7 +48,22 @@ export function createWorkspaceTools(store: Store, conversationId?: string) {
       }),
       async execute(_id, params, signal) {
         signal?.throwIfAborted();
-        store.work.patchRun(run().id, { plan: params.steps }, "plan");
+        const current = run();
+        const plan = params.steps.map((step) => ({ ...step, id: step.id || current.plan.find((p) => p.title === step.title)?.id || randomUUID() }));
+        if (new Set(plan.map((step) => step.id)).size !== plan.length) throw new Error("步骤标识不能重复。");
+        const outputs = new Set([...current.memoryIds, ...(current.jobs || []).map((job) => job.id),
+          ...current.sources.flatMap((source) => [source.assetId, `asset:${source.assetId}`]),
+          ...store.work.list<Artifact>("artifact", current.conversationId).filter((a) => a.runId === current.id).map((a) => a.id),
+          ...store.memoryCommands.receipts(current.id).flatMap((receipt) => receipt.after.map((ref) => ref.id))]);
+        for (const row of store.db.prepare("SELECT kind,ordinal,recordId FROM run_record_refs WHERE runId=?").all(current.id) as { kind: "memory" | "sample" | "source"; ordinal: number; recordId: string }[]) {
+          outputs.add(({ memory: "m", sample: "s", source: "e" }[row.kind]) + row.ordinal); outputs.add(row.recordId);
+        }
+        for (const part of current.parts) if (part.type === "tool" && part.state === "complete" && part.name === "query_memory_activities") {
+          const result = part.output as { activity?: { id: string }; activities?: { id: string }[] };
+          for (const activity of result.activities || (result.activity ? [result.activity] : [])) outputs.add(activity.id);
+        }
+        if (plan.some((step) => step.resultIds?.some((id) => !outputs.has(id)))) throw new Error("步骤结果必须引用本任务已返回的作业、记忆、活动、文档或实际读取的来源标识；仅上传或选中的资料不算读取。没有结果标识时使用 []。");
+        store.work.patchRun(current.id, { plan }, "plan");
         return result({ saved: true });
       },
     }),
@@ -60,10 +79,13 @@ export function createWorkspaceTools(store: Store, conversationId?: string) {
         artifactId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()], { description: "null to create; a real existing ID to revise" })),
         version: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()], { description: "null to create; the version returned by read_artifact to revise" })),
       }),
-      async execute(_id, p, signal) {
+      async execute(toolCallId, p, signal) {
         signal?.throwIfAborted();
         const current = run();
         if (!!p.artifactId !== (p.version != null)) throw new Error("新建结果请将 ID 和版本都设为 null；修订时须同时提供已存在的 ID 和当前版本。");
+        const receipt = current.receipts?.find((item) => item.toolCallId === toolCallId);
+        if (receipt) return result(receipt.output);
+        return store.work.transaction(() => {
         const artifact = store.work.writeArtifact({
           id: p.artifactId ?? undefined,
           version: p.version ?? undefined,
@@ -74,11 +96,14 @@ export function createWorkspaceTools(store: Store, conversationId?: string) {
           sources: store.work.resolveSources(current.id, p.sourceAssetIds),
           author: "agent",
         });
-        store.work.patchRun(current.id, {}, "artifact");
-        return result({
+        const value = {
           artifactId: artifact.id,
           title: artifact.title,
           version: artifact.version,
+        };
+        store.work.patchRun(current.id, { receipts: [...(store.work.get<Run>("run", current.id)?.receipts || []),
+          { toolCallId, name: "write_artifact", output: value }] }, "artifact");
+        return result(value);
         });
       },
     }),
@@ -205,7 +230,8 @@ export function createWorkspaceTools(store: Store, conversationId?: string) {
         to: Type.Optional(Type.Union([Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }), Type.Null()])),
         includeHistorical: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
       }),
-      async execute(_id, p, signal) {
+      async execute(toolCallId, p, signal) {
+        signal?.throwIfAborted();
         const current = run();
         if (!current.useMemory) throw new Error("本次任务未启用个人记忆。");
         if ((current.memoryTraces?.length || 0) >= 4) throw new Error("本轮记忆检索已达到三次，请依据现有证据回答或说明信息不足。");
@@ -227,24 +253,22 @@ export function createWorkspaceTools(store: Store, conversationId?: string) {
         question: text(1000),
         options: Type.Optional(Type.Array(text(160), { maxItems: 4 })),
       }),
-      async execute(_id, p, signal) {
+      async execute(toolCallId, p, signal) {
+        signal?.throwIfAborted();
         const current = run();
+        const answered = [...(current.questions || []), ...(current.question?.answer ? [current.question] : [])].find((q) => q.text === p.question && q.answer);
+        if (answered) return result({ answer: answered.answer, reused: true });
         store.work.patchRun(
           current.id,
           {
             status: "waiting",
-            question: { text: p.question, options: p.options || [] },
+            waitingFor: "user",
+            question: { id: randomUUID(), toolCallId, text: p.question, options: p.options || [] },
+            questions: current.question?.answer && !current.questions?.some((q) => q.id === current.question!.id) ? [...(current.questions || []), current.question] : current.questions,
           },
           "question",
         );
-        while (true) {
-          signal?.throwIfAborted();
-          const latest = store.work.get<Run>("run", current.id)!;
-          if (latest.status === "stopped") throw new Error("已停止");
-          if (latest.question?.answer)
-            return result({ answer: latest.question.answer });
-          await new Promise((resolve) => setTimeout(resolve, 200));
-        }
+        return { ...result({ waiting: true, questionId: store.work.get<Run>("run", current.id)!.question!.id }), terminate: true };
       },
     }),
   ];

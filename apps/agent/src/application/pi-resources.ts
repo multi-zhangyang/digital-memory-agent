@@ -3,12 +3,11 @@ import {
   createMcpExtension,
   createSyntheticSourceInfo,
   createToolSearchExtension,
-  type ExtensionUIContext,
   type Skill,
   type PromptTemplate,
 } from "@earendil-works/pi-coding-agent";
 import type { Store } from "../store.js";
-import { permissionExtension, requestApproval } from "../permissions.js";
+import { permissionExtension } from "../permissions.js";
 import {
   safePath,
   writeProjectFile,
@@ -16,6 +15,7 @@ import {
 } from "../project-files.js";
 import { sandboxArguments } from "../sandbox.js";
 import { digitalMemoryProfile } from "../harness/product-profile.js";
+import { createExtensionUI } from "./extension-ui.js";
 export async function prepareResources(
   store: Store,
   conversationId: string,
@@ -78,65 +78,7 @@ export async function prepareResources(
         sourceInfo,
       });
   }
-  const setStatus = (key: string, value?: string) => {
-    if (value) statuses[key] = value;
-    else delete statuses[key];
-  };
-  const ui = new Proxy(
-    {
-      select: async (title: string, options: string[]) => {
-        const a = await requestApproval(store, conversationId, {
-          title,
-          detail: "",
-          kind: "select",
-          options,
-        });
-        return a.status === "approved" ? a.answer : undefined;
-      },
-      confirm: async (title: string, detail: string) =>
-        (
-          await requestApproval(store, conversationId, {
-            title,
-            detail,
-            kind: "confirm",
-            options: [],
-          })
-        ).status === "approved",
-      input: async (title: string, placeholder?: string) => {
-        const a = await requestApproval(store, conversationId, {
-          title,
-          detail: placeholder || "",
-          kind: "input",
-          options: [],
-        });
-        return a.status === "approved" ? a.answer : undefined;
-      },
-      editor: async (title: string, prefill?: string) => {
-        const a = await requestApproval(store, conversationId, {
-          title,
-          detail: prefill || "",
-          kind: "input",
-          options: [],
-        });
-        return a.status === "approved" ? a.answer : undefined;
-      },
-      notify: (message: string) => setStatus("notification", message),
-      setStatus,
-      custom: async () => {
-        throw new Error("此扩展使用终端专属界面，请通过 Web 设置管理 MCP");
-      },
-      getEditorText: () => "",
-      getAllThemes: () => [],
-      getToolsExpanded: () => false,
-      setTheme: () => ({ success: false, error: "主题由 WebUI 管理" }),
-      onTerminalInput: () => () => {},
-    },
-    {
-      get(target, key) {
-        return key in target ? target[key as keyof typeof target] : () => {};
-      },
-    },
-  ) as unknown as ExtensionUIContext;
+  const ui = createExtensionUI(store, conversationId, statuses);
   const mcp = createMcpExtension({
     loadConfig: () => ({
       errors: [],
@@ -152,7 +94,7 @@ export async function prepareResources(
                 url: server.url,
                 headers: server.headers,
                 enabled: server.enabled,
-                exposure: "direct" as const,
+                exposure: server.exposure || "direct",
                 timeout: 60,
               }
             : {
@@ -176,14 +118,14 @@ export async function prepareResources(
                 ),
                 cwd: root,
                 enabled: server.enabled,
-                exposure: "direct" as const,
+                exposure: server.exposure || "direct",
                 timeout: 60,
               },
       })),
     }),
     logPath: join(store.harness.dataDir, "mcp.log"),
     openUrl: () =>
-      setStatus("mcp-auth", "此连接需要 OAuth；请使用支持静态认证的 MCP 连接"),
+      ui.setStatus("mcp-auth", "此连接需要 OAuth；请使用支持静态认证的 MCP 连接"),
     updateConfig: () => {
       throw new Error("请通过 Web 设置修改 MCP 连接");
     },

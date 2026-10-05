@@ -109,6 +109,7 @@ test("memory settings persist and users explicitly associate people and aliases"
     data: { version: created.version, people: ["顾言"], category: "event" },
   });
   await page.goto("/?view=memory");
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByRole("tab", { name: "人物", exact: true }).click();
   const personRow = page
     .getByRole("row")
@@ -154,6 +155,7 @@ test("timeline date filters include an event whose source only specifies a month
     },
   });
   await page.goto("/?view=memory");
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByRole("tab", { name: "时间线", exact: true }).click();
   await page.getByLabel("开始日期", { exact: true }).fill("2025-03-10");
   await page.getByLabel("结束日期", { exact: true }).fill("2025-03-20");

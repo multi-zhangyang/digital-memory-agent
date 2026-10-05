@@ -37,7 +37,7 @@ test("automatic intake runs without a task, exposes unverified evidence, and pre
 
     await page.goto("/");
     const launcher = page.getByTestId("task-launcher");
-    for (const label of ["整理资料", "查找与回忆", "纠正记忆", "准备数据集"]) await expect(launcher.getByRole("button", { name: label, exact: true })).toBeVisible();
+    for (const label of ["整理生活", "查找与回忆", "纠正记忆", "准备数据集"]) await expect(launcher.getByRole("button", { name: label, exact: true })).toBeVisible();
     await launcher.getByRole("button", { name: "查找与回忆", exact: true }).click();
     await expect(page.getByLabel("任务指令")).toHaveValue(/查找相关资料和个人记忆/);
     await page.screenshot({ path: "test-results/harness-task-entry.png", fullPage: true, animations: "disabled" });

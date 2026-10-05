@@ -17,6 +17,8 @@ export function capabilityStatuses(config: AppConfig, store: Store, features: Me
     status("memory.text", "文字处理", ["M1", "M2"], ["process_assets"], !!text, text || "未配置文字处理模型"),
     { ...status("memory.photo", "照片观察", ["M1", "M2"], ["process_assets", "read_evidence"], !!photo, photo || "未配置支持图片输入的模型"), verification: "not-verified" },
     status("memory.evidence", "原件与观察检索", ["M3"], ["search_evidence", "read_evidence"]),
+    { ...status("memory.activities", "生活活动整理", ["M1", "M2", "M3", "M4"], ["organize_memories", "query_memory_activities", "change_memory_activities"], !!text,
+      text ? `整理模型：${text}；候选归组、来源与集中核对` : "未配置文字处理模型"), verification: "not-verified" },
     status("memory.facts", "确认记忆与事件", ["M2", "M3", "M4"], ["search_memories", "query_events", "propose_memory", "inspect_memories", "change_memories", "manage_memory_links"]),
     { ...status("memory.embeddings", "本地语义、图像与人物特征", ["M1", "M2", "M3"], [], !!config.localProcessor, "检索编码器可替换；人物聚类仅提供候选关联"), available: featureStatus.state === "ready", verification: "not-verified" },
     status("memory.jobs", "独立后台作业与恢复", ["M1", "M2", "M4", "M5"], ["process_assets", "read_job_result", "manage_job"]),

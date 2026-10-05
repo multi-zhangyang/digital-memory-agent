@@ -127,6 +127,10 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { WorkSurface, type SurfaceTab } from "./work-surface";
+import { SessionControls } from "./session-controls";
+import { TimelineHistory } from "./timeline-history";
+import { DatasetDeliveryPanel } from "./dataset-delivery";
 import { TaskLauncher } from "./task-launcher";
 import { WorkbenchComposer } from "./workbench-composer";
 import {
@@ -163,9 +167,11 @@ const AssetLibrary = dynamic(
   { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
 );
 const MemoryLibrary = dynamic(
-  () => import("./memory-library").then((m) => m.MemoryLibrary),
+  () => import("./memory-home").then((m) => m.MemoryHome),
   { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
 );
+const ActivityInspector = dynamic(() => import("./memory-activities").then((m) => m.ActivityInspector));
+const MemoryActivitiesPage = dynamic(() => import("./memory-activities").then((m) => m.MemoryActivitiesPage));
 const MemoryDatasetsPage = dynamic(() => import("./memory-datasets").then((module) => module.MemoryDatasetsPage));
 const ProcessingCenter = dynamic(() => import("./processing-center").then((module) => module.ProcessingCenter));
 const SettingsPanel = dynamic(
@@ -176,12 +182,14 @@ const SettingsPanel = dynamic(
 type Page = WorkbenchPage;
 interface Navigation {
   view: Page;
+  memoryView: "activities" | "records";
   task: string | null;
   target: InspectorTarget | null;
   collection: string | null;
 }
 const initialNavigation: Navigation = {
   view: "chat",
+  memoryView: "activities",
   task: null,
   target: null,
   collection: null,
@@ -190,7 +198,7 @@ const navItems = [
   { id: "chat" as const, label: "新任务", icon: TerminalSquare },
   { id: "tasks" as const, label: "任务", icon: MessageSquare },
   { id: "assets" as const, label: "资料库", icon: FolderOpen },
-  { id: "memory" as const, label: "个人记忆", icon: Brain },
+  { id: "memory" as const, label: "记忆", icon: Brain },
   { id: "datasets" as const, label: "数据集", icon: Database },
   { id: "processing" as const, label: "处理与核对", icon: Clock3 },
   { id: "artifacts" as const, label: "整理结果", icon: FileText },
@@ -202,7 +210,7 @@ export function Workspace() {
       className="h-svh min-h-0"
       style={
         {
-          "--sidebar-width": "16rem",
+          "--sidebar-width": "15rem",
           "--sidebar-width-icon": "3rem",
         } as CSSProperties
       }
@@ -214,28 +222,30 @@ export function Workspace() {
 
 function WorkspaceContent() {
   const { setOpenMobile } = useSidebar();
-  const mobile = useIsMobile();
+  const mobile = useIsMobile(1024);
   const [nav, setNav] = useState<Navigation>(initialNavigation);
   const navRef = useRef(nav);
   navRef.current = nav;
-  const { snapshot, setSnapshot, configuration, projects, setProjects, harness, tools, ready, error, setError, refresh, refreshSnapshot } = useWorkbenchData();
+  const { snapshot, setSnapshot, refreshVersion, configuration, projects, setProjects, harness, tools, ready, error, setError, refresh, refreshSnapshot } = useWorkbenchData();
   const [projectId, setProjectId] = useState("default");
-  const [projectOpen, setProjectOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(true);
+  useEffect(() => { setProjectOpen(!mobile); }, [mobile]);
   const [folderOpen, setFolderOpen] = useState(false);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [fileRequest, setFileRequest] = useState<{
+    sessionKey: string;
     projectId: string;
     path: string;
     nonce: number;
   } | null>(null);
   const mainPanel = usePanelRef();
-  const [expandedWorkspace, setExpandedWorkspace] = useState(false);
-  const [projectTab, setProjectTab] = useState("files");
+  const [projectTab, selectProjectTab] = useState("files");
+  const [projectRequest, setProjectRequest] = useState(0);
+  const [deliveryRequest, setDeliveryRequest] = useState<(NonNullable<SurfaceTab["delivery"]> & { sessionKey: string }) | null>(null);
+  const setProjectTab = (tab: string) => { selectProjectTab(tab); setProjectRequest((n) => n + 1); };
   const [reviewRunId, setReviewRunId] = useState("latest");
   const [reviewPath, setReviewPath] = useState<string | null>(null);
-  const [historyLimit, setHistoryLimit] = useState(20);
   useEffect(() => {
-    setHistoryLimit(20);
     setReviewRunId("latest");
     setReviewPath(null);
   }, [nav.task]);
@@ -261,8 +271,9 @@ function WorkspaceContent() {
       setOpenMobile(false);
       const params = new URLSearchParams();
       if (next.view !== "chat") params.set("view", next.view);
+      if (next.view === "memory" && next.memoryView === "records") params.set("memoryView", "records");
       if (
-        next.view === "memory" &&
+        next.view === "memory" && next.memoryView === "records" &&
         new URL(window.location.href).searchParams.get("space") === "demo"
       )
         params.set("space", "demo");
@@ -283,9 +294,6 @@ function WorkspaceContent() {
     [setOpenMobile],
   );
   const task = useTask(nav.task, refreshSnapshot);
-  const focusedRun = mounted ? new URLSearchParams(window.location.search).get("run") : null;
-  const focusedRunIndex = task.detail?.runs.findIndex((run) => run.id === focusedRun) ?? -1;
-  const visibleRunCount = Math.max(historyLimit, focusedRunIndex >= 0 ? (task.detail?.runs.length || 0) - focusedRunIndex : 0);
   const shortcut = useLatestCallback((event: KeyboardEvent) => {
     if (!(event.ctrlKey || event.metaKey) || event.isComposing || event.altKey)
       return;
@@ -329,8 +337,9 @@ function WorkspaceContent() {
           ? view
           : "chat",
         task: params.get("task"),
+        memoryView: params.get("memoryView") === "records" || params.get("space") === "demo" || (view === "memory" && tab === "memories") ? "records" : "activities",
         collection: params.get("collection"),
-        target: ["assets", "artifacts", "memories"].includes(tab)
+        target: ["assets", "artifacts", "memories", "activities"].includes(tab)
           ? {
               tab,
               id: params.get("item") || undefined,
@@ -663,6 +672,15 @@ function WorkspaceContent() {
       setSubmitting(false);
     }
   }
+  const clearQueue = useLatestCallback(async () => {
+    if (!nav.task) return;
+    try {
+      const result = await api<{ texts: string[] }>("/conversations/" + nav.task + "/queue/clear", { method: "POST" });
+      const current = readDraft(draftKey, fallbackDraft);
+      setDraft({ ...current, text: [current.text, ...result.texts].filter(Boolean).join("\n\n") });
+      await task.refresh();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "撤回失败"); }
+  });
   const retryRun = useLatestCallback(
     (run: Run) =>
       void submit({
@@ -681,6 +699,10 @@ function WorkspaceContent() {
   const forkRun = useLatestCallback(
     (run: Run) => void forkConversation(run.conversationId, run.entryId),
   );
+  const openDelivery = useLatestCallback((runId: string, toolCallId: string) => {
+    setDeliveryRequest({ runId, toolCallId, sessionKey: draftKey });
+    setProjectOpen(true); navigate({ view: "chat", target: null });
+  });
   const openFiles = useCallback(
     (runId?: string, path?: string) => {
       setReviewRunId(runId || "latest");
@@ -693,7 +715,7 @@ function WorkspaceContent() {
   );
   const openProjectFile = useLatestCallback((path: string) => {
     if (!project) return;
-    setFileRequest({ projectId: project.id, path, nonce: Date.now() });
+    setFileRequest({ projectId: project.id, sessionKey: draftKey, path, nonce: Date.now() });
     navigate({ view: "chat", target: null });
     setProjectTab("files");
     setProjectOpen(true);
@@ -730,7 +752,6 @@ function WorkspaceContent() {
       fileReferences: refs,
     });
     mainPanel.current?.expand();
-    setExpandedWorkspace(false);
     focusComposer();
   });
   const reviewComment = useLatestCallback(
@@ -750,7 +771,6 @@ function WorkspaceContent() {
         fileReferences: refs,
       });
       mainPanel.current?.expand();
-      setExpandedWorkspace(false);
       if (mobile) setProjectOpen(false);
       focusComposer();
       return true;
@@ -765,6 +785,8 @@ function WorkspaceContent() {
       key={draftKey}
       compact={!!nav.task}
       draftKey={draftKey}
+      conversationId={nav.task || undefined}
+      presentation={task.detail?.presentation}
       fallbackDraft={fallbackDraft}
       projectId={project?.id}
       onOpenFile={openReference}
@@ -848,9 +870,15 @@ function WorkspaceContent() {
   ) : (
     <Skeleton className="h-32 w-full rounded-lg" />
   );
-  const inspector = nav.target ? (
+  const renderResource = (target: InspectorTarget, close: () => void) => target.tab === "activities" ? (target.id ? <ActivityInspector key={target.id} id={target.id} onInspect={inspect}
+    onClose={close} onChanged={() => { void refresh(); void task.refresh(); }} onReference={(text) => {
+      const current = readDraft(draftKey, fallbackDraft);
+      setDraft({ ...current, text: [current.text, text].filter(Boolean).join("\n\n") }); navigate({ view: "chat", ...(mobile ? { target: null } : {}) });
+      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="任务指令"]')?.focus());
+    }} /> : <div className="h-full overflow-auto p-6"><MemoryActivitiesPage assets={snapshot.assets} onInspect={inspect} /></div>) : target ? (
     <WorkbenchInspector
-      target={nav.target}
+      embedded={nav.view === "chat"}
+      target={target}
       assets={snapshot.assets}
       artifacts={
         nav.task && nav.view === "chat"
@@ -871,51 +899,45 @@ function WorkspaceContent() {
           : snapshot.memories
       }
       onTarget={inspect}
-      onClose={() => navigate({ target: null })}
+      onClose={close}
       onChanged={() => {
         void refresh();
         void task.refresh();
       }}
       onUseAsset={(asset) => useAssets([asset.id])}
     />
-  ) : project && projectOpen && nav.view === "chat" ? (
+  ) : null;
+  const renderProject = (surface: SurfaceTab, active: boolean) => surface.delivery ? <DatasetDeliveryPanel {...surface.delivery} active={active} refreshVersion={refreshVersion}
+    onMemory={(id) => inspect({ tab: "memories", id })} onRequest={(text) => { const current = readDraft(draftKey, fallbackDraft); setDraft({ ...current, text: [current.text, text].filter(Boolean).join("\n\n") }); }} /> : project ? (
     <ProjectWorkspace
       key={project.id}
       project={project}
-      tab={projectTab}
+      tab={surface.view || "files"}
+      onOpenFile={(path) => openReference({ path })}
       reviewRunId={reviewRunId}
       reviewPath={reviewPath}
       onReviewPathChange={setReviewPath}
       onReviewComment={reviewComment}
-      fileRequest={fileRequest}
-      expanded={expandedWorkspace}
-      onExpand={
-        mobile
-          ? undefined
-          : () => {
-              if (mainPanel.current?.isCollapsed()) mainPanel.current.expand();
-              else mainPanel.current?.collapse();
-              setExpandedWorkspace(mainPanel.current?.isCollapsed() || false);
-            }
-      }
-      onFindFile={() => setFilePickerOpen(true)}
+      fileRequest={surface.file || null}
       onReviewRunChange={setReviewRunId}
       onTabChange={setProjectTab}
-      conversationId={nav.task}
       runs={nav.task ? task.detail?.runs || [] : []}
-      onClose={() => {
-        mainPanel.current?.expand();
-        setExpandedWorkspace(false);
-        setProjectOpen(false);
-      }}
       onOpenFolder={openProjectFolder}
       onChanged={() => {
         void task.refresh();
         void refresh();
       }}
-      onFork={(id) => navigate({ task: id, view: "chat", target: null })}
     />
   ) : null;
+  const inspector = nav.view === "chat" && project && (projectOpen || nav.target) ? (
+    <WorkSurface key={nav.task || "new-" + project.id} sessionKey={nav.task || "new-" + project.id}
+      target={nav.target} projectView={projectTab} projectRequest={projectRequest} projectOpen={projectOpen} fileRequest={fileRequest?.sessionKey === draftKey ? fileRequest : null}
+      deliveryRequest={deliveryRequest?.sessionKey === draftKey ? deliveryRequest : null}
+      assets={snapshot.assets} artifacts={snapshot.artifacts.filter((a) => a.conversationId === nav.task)}
+      renderResource={renderResource} renderProject={renderProject}
+      onSelect={(surface) => { if (surface.target) navigate({ target: surface.target }); else { navigate({ target: null }); selectProjectTab(surface.view || "files"); setProjectOpen(true); } }}
+      onClose={() => { navigate({ target: null }); setProjectOpen(false); }} />
+  ) : nav.target ? renderResource(nav.target, () => navigate({ target: null })) : null;
   const main =
     nav.view === "settings" ? (
       <SettingsPanel
@@ -952,6 +974,14 @@ function WorkspaceContent() {
       />
     ) : nav.view === "memory" ? (
       <MemoryLibrary
+        view={nav.memoryView}
+        onViewChange={(memoryView) => navigate({ memoryView, target: null })}
+        onInspect={inspect}
+        onStart={() => {
+          const key = "new-" + (project?.id || "default");
+          writeDraft(key, { ...readDraft(key, fallbackDraft), text: "请按具体活动整理我提交的照片和文字，关联已有资料，并集中列出需要核对的疑点。", scope: "library" });
+          navigate({ view: "chat", task: null, target: null });
+        }}
         memories={snapshot.memories}
         assets={snapshot.assets}
         models={configuration?.models || []}
@@ -963,6 +993,7 @@ function WorkspaceContent() {
       <MemoryDatasetsPage models={configuration?.models || []} onOpen={(id) => inspect({ tab: "memories", id })} />
     ) : nav.view === "processing" ? (
       <ProcessingCenter onMemory={(id) => inspect({ tab: "memories", id })} onAsset={(id) => inspect({ tab: "assets", id })}
+        onActivity={(id) => inspect({ tab: "activities", id })}
         onDatasets={() => navigate({ view: "datasets", target: null })} onSettings={() => navigate({ view: "settings", target: null })} />
     ) : nav.view === "artifacts" ? (
       <ArtifactLibrary
@@ -997,26 +1028,19 @@ function WorkspaceContent() {
               initial="instant"
               className="min-h-0 flex-1"
             >
-              <ConversationContent className="mx-auto w-full max-w-3xl gap-10 px-5 py-8 sm:px-8">
-                {(task.detail.runs.length > historyLimit ||
-                  task.detail.legacyMessages.length > historyLimit) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mx-auto text-xs text-muted-foreground"
-                    onClick={() => setHistoryLimit((count) => count + 20)}
-                  >
-                    加载更早记录
-                  </Button>
-                )}
-                <LegacyMessages messages={task.detail.legacyMessages.slice(-historyLimit)} />
+              <ConversationContent className="mx-auto w-full max-w-3xl gap-8 px-5 py-6 sm:px-6">
+                <TimelineHistory hasMore={!!task.detail.page?.hasMore} loading={task.loadingMore}
+                  version={(task.detail.page?.before || "") + task.detail.runs.length} onLoad={task.loadMore} />
+                <LegacyMessages messages={task.detail.legacyMessages} />
                 {task.detail.runs
                   .filter((run) => run.status !== "queued")
-                  .slice(-visibleRunCount)
                   .map((run) => (
                     <RunThread
                       key={run.id}
                       run={run}
+                      activeEntryIds={task.detail?.activeEntryIds}
+                      onClearQueue={clearQueue}
+                      onDelivery={openDelivery}
                       assets={snapshot.assets}
                       artifacts={snapshot.artifacts}
                       memories={snapshot.memories}
@@ -1102,7 +1126,6 @@ function WorkspaceContent() {
   useEffect(() => {
     if (!inspector || mobile) {
       mainPanel.current?.expand();
-      setExpandedWorkspace(false);
     }
   }, [!!inspector, mobile, mainPanel]);
   const navigationActions = {
@@ -1196,7 +1219,7 @@ function WorkspaceContent() {
                 <BreadcrumbItem className="min-w-0">
                   <BreadcrumbPage className="max-w-56 truncate text-sm font-medium">
                     {nav.view === "chat" && nav.task
-                      ? selectedConversation?.title || "任务"
+                      ? task.detail?.presentation?.title || selectedConversation?.title || "任务"
                       : nav.view === "settings"
                         ? "设置"
                         : nav.view === "chat"
@@ -1215,7 +1238,7 @@ function WorkspaceContent() {
                 className="mr-2 hidden items-center gap-2 text-xs text-muted-foreground sm:flex"
               >
                 <LoaderCircle className="size-3 animate-spin" />
-                {running.status === "waiting" ? running.waitingFor === "jobs" ? "等待后台作业" : "等待确认" : "进行中"}
+                {running.stopRequestedAt ? "正在停止…" : running.status === "waiting" ? running.waitingFor === "jobs" ? "等待后台作业" : "等待确认" : ({ compacting: "压缩上下文", retrying: "重试连接", tools: "执行工具", generating: "生成中", settled: "整理结果" }[running.phase || "generating"])}
               </span>
             )}
             {task.connection === "reconnecting" && (
@@ -1252,6 +1275,12 @@ function WorkspaceContent() {
             {selectedConversation &&
               nav.view === "chat" &&
               taskMenu(selectedConversation)}
+            {nav.task && nav.view === "chat" && model && <SessionControls key={nav.task} conversationId={nav.task}
+              busy={!!running || !!queued.length} revision={latest?.finishedAt}
+              onNavigate={async (text) => {
+                if (text) { const current = readDraft(draftKey, fallbackDraft); setDraft({ ...current, text: [current.text, text].filter(Boolean).join("\n\n") }); }
+                await task.refresh(true); await refreshSnapshot();
+              }} onFork={(entryId) => forkConversation(nav.task!, entryId)} />}
             {nav.view === "chat" && (
               <>
                 <Separator orientation="vertical" className="mx-1 h-4" />
@@ -1320,14 +1349,11 @@ function WorkspaceContent() {
             <ResizablePanelGroup orientation="horizontal">
               <ResizablePanel
                 id="main"
-                defaultSize="52%"
-                minSize="38%"
+                defaultSize="50%"
+                minSize="35%"
                 collapsible
                 collapsedSize="0%"
                 panelRef={mainPanel}
-                onResize={(size) =>
-                  setExpandedWorkspace(size.asPercentage === 0)
-                }
                 className="flex min-h-0 flex-col"
               >
                 {main}
@@ -1337,8 +1363,8 @@ function WorkspaceContent() {
                   <ResizableHandle />
                   <ResizablePanel
                     id="inspector"
-                    defaultSize="48%"
-                    minSize="30%"
+                    defaultSize="50%"
+                    minSize="35%"
                   >
                     {inspector}
                   </ResizablePanel>

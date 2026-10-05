@@ -101,6 +101,8 @@ import {
 import { memo, useEffect, useState } from "react";
 import { AgentApprovals } from "./agent-approvals";
 import { RunJobs } from "./run-jobs";
+import { RunActivities } from "./memory-activities";
+import { RunRecovery } from "./run-recovery";
 
 export function SourceLinks({
   sources,
@@ -153,108 +155,19 @@ export function SourceLinks({
   );
 }
 
-export function Markdown({ content }: { content: string }) {
-  return (
-    <MessageResponse
-      skipHtml
-      components={{
-        img: () => null,
-        a: ({ href, children }) => (
-          <a
-            href={
-              datasetDownloadUrl(href) || (href?.startsWith("http://") || href?.startsWith("https://")
-                ? href
-                : undefined)
-            }
-            download={datasetDownloadUrl(href) ? true : undefined}
-            target={datasetDownloadUrl(href) ? undefined : "_blank"}
-            rel="noopener noreferrer"
-          >
-            {children}
-          </a>
-        ),
-      }}
-    >
-      {content}
-    </MessageResponse>
-  );
-}
+export { Markdown } from "./markdown";
+import { Markdown } from "./markdown";
+import { ExecutionTimeline } from "./execution-timeline";
 
-function RunActivity({ run, tools }: { run: Run; tools: ToolInfo[] }) {
-  const busy = isActive(run);
-  const [open, setOpen] = useState<boolean | undefined>();
-  const parts = run.parts.filter((part) => part.type === "tool");
-  const reasoning = run.parts
-    .filter((part) => part.type === "reasoning")
-    .map((part) => part.text)
-    .join("\n\n");
-  const failed = parts.some((part) => part.state === "error");
-  const current = parts.find((part) => part.state === "running");
-  const expanded = open ?? (busy || failed);
-  const seconds =
-    run.startedAt && run.finishedAt
-      ? Math.max(
-          1,
-          Math.round(
-            (Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 1000,
-          ),
-        )
-      : null;
-  const duration = seconds
-    ? seconds >= 60
-      ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
-      : `${seconds} 秒`
-    : "";
-  if (!parts.length && !reasoning && !run.plan.length) return null;
-  const title = busy
-    ? current
-      ? tools.find((tool) => tool.name === current.name)?.label || "正在执行"
-      : run.status === "waiting"
-        ? run.waitingFor === "jobs" ? "等待后台作业" : "等待确认"
-        : "正在思考"
-    : failed
-      ? `${parts.length} 项操作 · 有未完成项`
-      : run.status === "stopped"
-        ? "执行已停止"
-        : parts.length
-          ? `已执行 ${parts.length} 项操作${duration ? " · " + duration : ""}`
-          : "思考过程";
+function RunPlan({ run }: { run: Run }) {
+  if (!run.plan.length) return null;
   return (
-    <ChainOfThought
-      open={expanded}
-      onOpenChange={setOpen}
-      className="space-y-3"
-    >
-      <ChainOfThoughtHeader
-        aria-label="执行记录"
-        className="w-fit gap-1.5 text-xs [&>span]:flex-none [&>svg:first-child]:hidden [&>svg:last-child]:size-3"
-      >
-        {title}
-      </ChainOfThoughtHeader>
-      {expanded && (
-        <ChainOfThoughtContent className="space-y-3 border-l pl-4 pt-1">
-          {reasoning && (
-            <Reasoning
-              isStreaming={busy && run.parts.at(-1)?.type === "reasoning"}
-              defaultOpen={false}
-              className="mb-0"
-            >
-              <ReasoningTrigger
-                className="text-xs"
-                getThinkingMessage={(streaming) =>
-                  streaming ? "思考中" : "思考过程"
-                }
-              />
-              <ReasoningContent>{reasoning}</ReasoningContent>
-            </Reasoning>
-          )}
-          {!!run.plan.length && (
             <Plan
               defaultOpen
               className="gap-2 border-0 bg-transparent py-1 shadow-none"
             >
               <PlanHeader className="flex-row items-center px-0">
-                <PlanTitle className="text-xs">执行步骤</PlanTitle>
+                <PlanTitle >执行步骤</PlanTitle>
                 <div className="ml-auto flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
                     {
@@ -266,11 +179,11 @@ function RunActivity({ run, tools }: { run: Run; tools: ToolInfo[] }) {
                   <PlanTrigger />
                 </div>
               </PlanHeader>
-              <PlanContent className="space-y-2 border-l px-4 pb-1">
+              <PlanContent className="flex flex-col gap-2 border-l px-4 pb-1">
                 {run.plan.map((step, index) => (
                   <TaskItem
-                    key={index}
-                    className="flex items-center gap-2 text-xs text-foreground"
+                    key={step.id || index}
+                    className="flex items-center gap-2"
                   >
                     {step.status === "completed" ? (
                       <Check className="size-3.5" />
@@ -290,20 +203,14 @@ function RunActivity({ run, tools }: { run: Run; tools: ToolInfo[] }) {
                 ))}
               </PlanContent>
             </Plan>
-          )}
-          <div className="space-y-0">
-            {parts.map((part) => (
-              <ToolActivity key={part.toolCallId} part={toolUI(part)} />
-            ))}
-          </div>
-        </ChainOfThoughtContent>
-      )}
-    </ChainOfThought>
   );
 }
 
 export const RunThread = memo(function RunThread({
   run,
+  activeEntryIds,
+  onClearQueue,
+  onDelivery,
   assets,
   artifacts,
   memories,
@@ -317,6 +224,9 @@ export const RunThread = memo(function RunThread({
   onReuse,
 }: {
   run: Run;
+  activeEntryIds?: string[];
+  onClearQueue?: () => Promise<void>;
+  onDelivery?: (runId: string, toolCallId: string) => void;
   assets: Asset[];
   artifacts: Artifact[];
   memories: MemoryEntry[];
@@ -339,6 +249,8 @@ export const RunThread = memo(function RunThread({
     return () => clearTimeout(timer);
   }, [run.id]);
   const busy = isActive(run);
+  const branch = activeEntryIds && new Set(activeEntryIds);
+  const showDelivery = !branch || !run.entryId || branch.has(run.entryId) || busy;
   const response = run.parts
     .filter((part) => part.type === "text")
     .map((part) => part.text)
@@ -365,11 +277,11 @@ export const RunThread = memo(function RunThread({
   return (
     <section
       id={"run-" + run.id}
-      className="space-y-6"
+      className="flex flex-col gap-6"
       data-testid="run-thread"
       data-run-status={run.status}
     >
-      <Message from="user" className="ml-auto max-w-[90%]">
+      {!run.window?.start && (!branch || !run.inputEntryId || branch.has(run.inputEntryId)) && <Message from="user" className="ml-auto max-w-[90%]">
         <MessageContent className="rounded-2xl px-4 py-3">
           {run.text && <p className="whitespace-pre-wrap leading-7">{run.text}</p>}
           {!!run.fileReferences?.length && (
@@ -426,19 +338,15 @@ export const RunThread = memo(function RunThread({
             </MessageAction>
           </MessageActions>
         )}
-      </Message>
-      <Message from="assistant" className="max-w-full gap-3">
+      </Message>}
+      {showDelivery && <RunPlan run={run} />}
+      <ExecutionTimeline run={run} activeEntryIds={activeEntryIds} />
+      {showDelivery && <Message from="assistant" className="max-w-full gap-3">
         <MessageContent className="w-full gap-4 overflow-visible">
-          <RunActivity run={run} tools={tools} />
-          <RunJobs jobs={run.jobs || []} />
-          {response && <Markdown content={response} />}
-          {run.parts
-            .filter((part) => part.type === "notice")
-            .map((part, index) => (
-              <p key={index} className="text-xs text-muted-foreground">
-                {part.text}
-              </p>
-            ))}
+          <RunJobs jobs={(run.jobs || []).filter((job) => !run.parts.some((part) => part.type === "tool" && part.toolCallId === job.toolCallId))} />
+          <RunActivities run={run} assets={assets} onInspect={onInspect} />
+          {run.parts.flatMap((part) => part.type === "tool" && part.name === "deliver_dataset" && part.state === "complete" ? [part] : []).map((part) =>
+            <Button key={part.toolCallId} size="sm" variant="outline" className="self-start" onClick={() => onDelivery?.(run.id, part.toolCallId)}>查看训练文件</Button>)}
           {!run.parts.length && busy && (
             <div role="status" className="text-sm">
               <Shimmer>
@@ -447,10 +355,14 @@ export const RunThread = memo(function RunThread({
             </div>
           )}
           <AgentApprovals run={run} onChanged={onRefresh} />
+          <RunRecovery run={run} onChanged={onRefresh} />
           {!!run.interventions?.length && (
             <Queue className="p-2 shadow-none">
+              {run.interventions.some((item) => item.status === "queued") && onClearQueue && <div className="flex items-center justify-between px-2 pb-2">
+                <span className="text-xs text-muted-foreground">待发送指令</span><Button size="sm" variant="ghost" onClick={() => void onClearQueue()}>撤回到输入框</Button>
+              </div>}
               <QueueList className="m-0">
-                {run.interventions.map((item) => (
+                {run.interventions.filter((item) => item.status !== "delivered" || !run.parts.some((part) => part.type === "message" && part.role === "user" && part.text === item.text)).map((item) => (
                   <QueueItem key={item.id}>
                     <div className="flex items-center gap-2">
                       <QueueItemContent className="line-clamp-none whitespace-pre-wrap text-foreground">
@@ -461,7 +373,7 @@ export const RunThread = memo(function RunThread({
                           ? "等待送达"
                           : item.status === "delivered"
                             ? "已送达"
-                            : "未送达"}
+                            : item.status === "handled" ? "扩展已处理" : "已退回"}
                       </Badge>
                     </div>
                   </QueueItem>
@@ -696,7 +608,7 @@ export const RunThread = memo(function RunThread({
             )}
           </MessageActions>
         </MessageToolbar>
-      </Message>
+      </Message>}
     </section>
   );
 });

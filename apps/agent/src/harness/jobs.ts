@@ -62,7 +62,10 @@ export class TaskJobs {
     this.store.work.transaction(() => {
       this.store.db.prepare("INSERT OR IGNORE INTO run_jobs(runId,kind,jobId,toolCallId,ownership) VALUES (?,?,?,?,?)")
         .run(runId, kind, jobId, toolCallId, ownership);
-      this.store.work.patchRun(runId, { jobs: this.list(runId) }, "job-submitted");
+      const current = this.store.work.get<Run>("run", runId)!;
+      const jobs = this.list(runId), part = current.parts.find((p) => p.type === "tool" && p.toolCallId === toolCallId);
+      this.store.work.patchRun(runId, { jobs, receipts: [...(current.receipts || []).filter((r) => r.toolCallId !== toolCallId),
+        { toolCallId, name: part?.type === "tool" ? part.name : kind, output: { job: jobs.find((j) => j.kind === kind && j.id === jobId), accepted: true } }] }, "job-submitted");
     });
     return this.list(runId).find((job) => job.kind === kind && job.id === jobId)!;
   }
@@ -131,11 +134,12 @@ export class TaskJobs {
       const id = createHash("sha256").update(JSON.stringify(jobs.map((job) => [job.kind, job.id, job.revision]))).digest("hex");
       for (const job of jobs) this.store.db.prepare("UPDATE run_jobs SET handledRevision=? WHERE runId=? AND kind=? AND jobId=?")
         .run(job.revision, runId, job.kind, job.id);
-      // Persist the claim before invoking the model. An interrupted invocation is never replayed automatically.
-      this.store.work.patchRun(runId, { status: "running", waitingFor: null }, "job-results", {
+      // Preserve the delivered data before invoking Pi; recovery reuses the notification and never resubmits the jobs.
+      const content = { jobs, instruction: "后台作业已结束。请根据真实结果继续原任务并交付；待核对观察不代表已确认事实。失败或覆盖不足须明确说明。" };
+      this.store.work.patchRun(runId, { status: "running", waitingFor: null, jobNotification: { id, content } }, "job-results", {
         status: "running", waitingFor: null, notificationId: id, jobIds: jobs.map((job) => job.id),
       });
-      return { id, content: { jobs, instruction: "后台作业已结束。请根据真实结果继续原任务并交付；待核对观察不代表已确认事实。失败或覆盖不足须明确说明。" } };
+      return { id, content };
     });
   }
 

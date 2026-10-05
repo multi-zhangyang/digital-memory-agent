@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentApproval, Run } from "@memory/contracts";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { Store } from "./store.js";
-const readOnly = new Set([
+export const readOnlyTools = new Set([
   "read",
   "list_files",
   "search_files",
@@ -17,6 +17,7 @@ const readOnly = new Set([
   "read_evidence",
   "inspect_source_people",
   "query_events",
+  "query_memory_activities",
   "read_job_result",
   "web_search",
   "web_read",
@@ -26,32 +27,30 @@ const local = new Set(["update_plan", "ask_user"]);
 export async function requestApproval(
   store: Store,
   conversationId: string,
-  input: Pick<AgentApproval, "title" | "detail" | "kind" | "options">,
+  input: Pick<AgentApproval, "title" | "detail" | "kind" | "options" | "prefill" | "placeholder" | "expiresAt">,
   signal?: AbortSignal,
+  toolCallId?: string,
 ) {
   const run = store.work.activeRun(conversationId);
   if (!run) throw new Error("请从工作台启动任务");
+  signal?.throwIfAborted();
+  const previous = store.harness.approvals(run.id).find((a) => a.kind === input.kind && a.title === input.title && a.detail === input.detail &&
+    JSON.stringify(a.options) === JSON.stringify(input.options) && a.prefill === input.prefill && a.placeholder === input.placeholder &&
+    (input.kind !== "tool" || a.toolCallId === toolCallId) && !a.consumedBy);
+  if (previous) {
+    if (previous.status !== "pending") return store.harness.save("approval", { ...previous, consumedBy: toolCallId || previous.id });
+    return previous;
+  }
   const approval = store.harness.save("approval", {
     ...input,
     id: randomUUID(),
     runId: run.id,
     status: "pending" as const,
     createdAt: new Date().toISOString(),
+    toolCallId: toolCallId || (() => { const part = run.parts.slice().reverse().find((part) => part.type === "tool" && part.state === "running"); return part?.type === "tool" ? part.toolCallId : undefined; })(),
   });
-  store.work.patchRun(run.id, { status: "waiting" }, "approval");
-  while (true) {
-    signal?.throwIfAborted();
-    const latest = store.work.get<Run>("run", run.id)!;
-    if (["stopped", "failed", "completed"].includes(latest.status))
-      throw new Error("执行已结束");
-    const answer = store.harness.get<AgentApproval>("approval", approval.id)!;
-    if (answer.status !== "pending") {
-      if (!store.harness.approvals(run.id).some((a) => a.status === "pending"))
-        store.work.patchRun(run.id, { status: "running" }, "approval-resolved");
-      return answer;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  store.work.patchRun(run.id, { status: "waiting", waitingFor: "approval" }, "approval");
+  return approval;
 }
 export function permissionExtension(
   store: Store,
@@ -68,7 +67,11 @@ export function permissionExtension(
         return { block: true, reason: "此工具已被禁用" };
       if (run?.memoryEpoch !== undefined && run.memoryEpoch !== store.memories.ledger.epoch)
         return { block: true, reason: "记忆已更新，禁止使用旧上下文继续操作" };
-      if (local.has(event.toolName) || readOnly.has(event.toolName)) return;
+      if (run?.waitingFor && ["user", "approval", "recovery"].includes(run.waitingFor))
+        return { block: true, reason: "任务等待用户处理，请在恢复后继续" };
+      if (run?.recovery?.decisions?.some((decision) => decision.action === "skip" && run.parts.some((part) => part.type === "tool" && part.toolCallId === decision.toolCallId && part.name === event.toolName)))
+        return { block: true, reason: "该工具的中断结果未核实，用户选择本次任务跳过；不能自动重复操作" };
+      if (local.has(event.toolName) || readOnlyTools.has(event.toolName)) return;
       if (!run)
         return {
           block: true,
@@ -85,7 +88,8 @@ export function permissionExtension(
         detail: JSON.stringify(event.input, null, 2).slice(0, 12000),
         kind: "tool",
         options: [],
-      });
+      }, undefined, event.toolCallId);
+      if (answer.status === "pending") return { block: true, reason: "等待用户审批后继续" };
       if (answer.status !== "approved")
         return { block: true, reason: "用户拒绝了本次工具调用，请调整方案" };
     });

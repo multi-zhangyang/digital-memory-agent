@@ -22,7 +22,8 @@ test("library fetches successive bounded server pages and can open an older resu
     }
   });
   await page.goto("/?space=demo");
-  await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   const library = page.getByTestId("memory-library");
   await library.getByLabel("搜索记忆").fill(tag);
   const records = library.getByRole("checkbox", { name: /^选择记忆 / });

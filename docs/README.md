@@ -1,11 +1,16 @@
 # 文档索引
 
-开始新任务时先读[收工交接](plans/2026-10-05-handoff.md)，再按任务查看产品定义和架构。交接记录当前运行状态、验证结果、剩余问题与下一步；历史计划里的“当前”“下一步”指各自记录时点。
+开始新任务时先读[最新进展：Pi 工作台重构](plans/0033-pi-workbench.md)，再结合[生活记忆 Agent](plans/0032-living-memory-agent.md)及产品定义、架构。当前工作覆盖真实 Pi 消息、会话树、持久工作区与训练文件交付；训练继续暂停。本机工作台 3002、Agent 4313，运行与验证记录见当前阶段；历史计划里的“当前”“下一步”指各自记录时点。
 
 | 文档 | 用途 |
 | --- | --- |
 | [README](../README.md) | 启动、配置、主要任务与能力边界 |
 | [收工交接](plans/2026-10-05-handoff.md) | 明天的起点、收尾验证与清理后的恢复位置 |
+| [Pi 工作台重构](plans/0033-pi-workbench.md) | 当前消息、会话、工作区及核心任务验收 |
+| [下一阶段讨论](plans/2026-10-05-next-discussion.md) | 当前基线、核心瓶颈与待确定的下一步范围 |
+| [生活记忆 Agent 与工作台](plans/0032-living-memory-agent.md) | 活动整理、恢复机制与此前界面验收 |
+| [来源作答与质量对照](plans/0031-dataset-answerability.md) | 保留的训练资料质量实现、真实错误与成本 |
+| [记忆质量技术取舍](design/0002-memory-quality-bottlenecks.md) | Exa 一手研究、瓶颈分析与采用边界 |
 | [产品定义](product.md) | M1–M6 核心用户任务及 H1 执行可靠性的验收 |
 | [架构](architecture.md) | Harness、Pi 适配、业务服务、数据与权限边界 |
 | [本地处理方案](local-memory-processing.md) | 编码器部署、检索对照、记忆备份与恢复 |
@@ -21,6 +26,9 @@
 | 11–17：持续记忆与质量基线 | [持续记忆](plans/0011-continuous-memory.md)、[Colab 准备](plans/0012-colab-cli-preparation.md)、[照片记忆](plans/0013-photo-memory.md)、[检索基础](plans/0014-memory-retrieval-foundation.md)、[工具质量](plans/0015-tool-quality.md)、[照片处理实测](plans/0016-photo-processor.md)、[问题生成实测](plans/0017-dataset-questions.md) |
 | 18–23：专用 Harness 与媒体任务 | [Harness 重构](plans/0018-harness-refactor.md)、[Agent first](plans/0019-agent-first-media.md)、[媒体复核](plans/0020-media-review-quality.md)、[视频证据](plans/0021-video-memory.md)、[视频索引](plans/0022-video-source-index.md)、[画面记忆草稿](plans/0023-frame-memory-drafts.md) |
 | 24–30：训练资料与真实交付 | [纠正后重建](plans/0024-dataset-rebuild.md)、[成对审阅](plans/0025-evaluation-pairing.md)、[后台核验](plans/0026-dataset-audit.md)、[逐题待核对](plans/0027-dataset-review-queue.md)、[交付收尾](plans/0028-dataset-delivery-completion.md)、[部分交付](plans/0029-partial-dataset-delivery.md)、[原决定与后续依据](plans/0030-sample-follow-up-display.md) |
+| 31：来源作答与质量测量 | [来源作答与训练题质量对照](plans/0031-dataset-answerability.md) |
+| 32：生活记忆 Agent 与工作台 | [活动整理、持续回忆、Pi 恢复与界面](plans/0032-living-memory-agent.md) |
+| 33：Pi 工作台 | [消息投影、会话树、持久工作区与真实任务交付](plans/0033-pi-workbench.md) |
 
 [工作台设计研究](design/0001-agent-workspace-research.md)保留设计依据。照片误识别、问题生成及审阅依据错误均保留在相应阶段，不因后续重构或界面改进被改写成成功。
 

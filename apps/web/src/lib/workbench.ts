@@ -1,3 +1,5 @@
+import { applyPartEvent, isPartEventType } from "@memory/contracts/execution";
+import type { PartEvent } from "@memory/contracts";
 import type {
   Artifact,
   Asset,
@@ -14,7 +16,7 @@ import type {
 import { assetUrl } from "./api";
 
 export type InspectorTarget = {
-  tab: "assets" | "artifacts" | "memories";
+  tab: "assets" | "artifacts" | "memories" | "activities";
   id?: string;
   start?: number;
   end?: number;
@@ -68,56 +70,14 @@ export const fileData = (asset: Asset) => ({
 export function applyRunEvent(run: Run, event: RunEvent): Run {
   if (event.seq <= run.cursor) return run;
   const data = event.data as Record<string, unknown>;
-  const parts: ChatPart[] = [...run.parts];
-  const clonePart = (index: number) => {
-    if (index >= 0) parts[index] = { ...parts[index] };
-    return parts[index];
-  };
-  if (event.type === "text" || event.type === "reasoning") {
-    const last = clonePart(parts.length - 1);
-    if (last?.type === event.type) last.text += String(data.delta);
-    else parts.push({ type: event.type, text: String(data.delta) });
-  } else if (event.type === "tool-start")
-    parts.push({
-      type: "tool",
-      toolCallId: String(data.id),
-      name: String(data.name),
-      input: data.input,
-      state: "running",
-    });
-  else if (event.type === "tool-update") {
-    const part = clonePart(
-      parts.findIndex((p) => p.type === "tool" && p.toolCallId === data.id),
-    );
-    if (part?.type === "tool") part.output = data.output;
-  } else if (event.type === "notice") {
-    const previous = clonePart(
-      parts.findLastIndex((p) => p.type === "notice" && p.state === "running"),
-    );
-    if (data.state !== "running" && previous?.type === "notice") {
-      previous.text = String(data.text);
-      previous.state = data.state as "complete" | "error";
-    } else
-      parts.push({
-        type: "notice",
-        text: String(data.text),
-        state: data.state as "running" | "complete" | "error",
-      });
-  } else if (event.type === "tool-end") {
-    const part = clonePart(
-      parts.findIndex(
-        (part) => part.type === "tool" && part.toolCallId === data.id,
-      ),
-    );
-    if (part?.type === "tool") {
-      part.state = data.error ? "error" : "complete";
-      part.output = data.output;
-      if (data.error)
-        part.errorText =
-          typeof data.output === "string" ? data.output : "工具执行失败";
-    }
-  } else return { ...run, ...data, cursor: event.seq } as Run;
-  return { ...run, parts, cursor: event.seq };
+  if (isPartEventType(event.type)) {
+    const partEvent = { ...data, type: event.type } as PartEvent;
+    return { ...run, parts: applyPartEvent(run.parts, partEvent), cursor: event.seq,
+      ...(event.type === "message-start" ? { presentationVersion: 2 as const } : {}),
+      ...(partEvent.type === "message-entry" && partEvent.initial ? { inputEntryId: partEvent.entryId } : {}),
+    };
+  }
+  return { ...run, ...data, cursor: event.seq } as Run;
 }
 
 export function downloadText(title: string, content: string, extension = "md") {

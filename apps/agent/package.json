@@ -16,7 +16,9 @@
     "eval:harness:live": "tsx scripts/evaluate-harness.ts --live",
     "eval:harness:migration": "tsx scripts/evaluate-harness-migration.ts",
     "eval:harness:product": "tsx scripts/evaluate-product-harness.ts --live",
+    "eval:workbench": "tsx scripts/evaluate-workbench.ts --live",
     "eval:agent-first": "tsx scripts/evaluate-agent-first.ts --live",
+    "eval:living-memory": "tsx scripts/evaluate-living-memory.ts --live",
     "eval:media-review": "tsx scripts/evaluate-media-review.ts --live",
     "eval:video-memory": "tsx scripts/evaluate-video-memory.ts --live",
     "eval:video-index": "tsx scripts/evaluate-video-index.ts",
@@ -32,9 +34,11 @@
     "eval:quality:photos": "tsx scripts/evaluate-photo-processor.ts",
     "eval:dataset": "tsx scripts/evaluate-dataset.ts",
     "eval:dataset:questions": "tsx scripts/evaluate-dataset-questions.ts",
+    "eval:dataset:answerability": "tsx scripts/evaluate-dataset-answerability.ts --live",
     "archive:memory": "tsx scripts/archive-memory.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "1.0.0",
     "@earendil-works/pi-ai": "1.0.0",
     "@earendil-works/pi-coding-agent": "1.0.0",
     "@fastify/multipart": "^9.3.0",

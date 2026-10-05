@@ -60,11 +60,13 @@ export interface RunIntervention {
   mode?: "steer" | "followUp";
   id: string;
   text: string;
-  status: "queued" | "delivered" | "returned";
+  status: "queued" | "delivered" | "returned" | "handled";
   createdAt: string;
 }
 
 export interface AgentApproval {
+  toolCallId?: string;
+  consumedBy?: string;
   id: string;
   runId: string;
   title: string;
@@ -73,6 +75,10 @@ export interface AgentApproval {
   options: string[];
   status: "pending" | "approved" | "denied";
   answer?: string;
+  prefill?: string;
+  placeholder?: string;
+  expiresAt?: string;
+  resolution?: "user" | "expired" | "cancelled";
   createdAt: string;
 }
 
@@ -93,6 +99,7 @@ export interface McpConnection {
   command: string;
   args: string[];
   enabled: boolean;
+  exposure?: "direct" | "deferred";
   hasSecrets?: boolean;
 }
 
@@ -112,6 +119,14 @@ export interface SessionNode {
   text: string;
   createdAt: string;
   active: boolean;
+  kind?: string;
+}
+
+export interface ExtensionPresentation {
+  statuses: Record<string, string>;
+  widgets: Record<string, { lines: string[]; placement: "aboveEditor" | "belowEditor" }>;
+  title?: string;
+  editor?: { text: string; revision: string; source?: "extension" | "user" };
 }
 
 export interface SessionState {
@@ -124,9 +139,12 @@ export interface SessionState {
     contextWindow: number;
     percent: number | null;
   } | null;
-  tools: Array<{ name: string; active: boolean; description: string }>;
+  tools: Array<{ name: string; active: boolean; description: string; disabled?: boolean; exposure?: string }>;
   nodes: SessionNode[];
   skills: string[];
   prompts: string[];
   statuses: Record<string, string>;
+  leafId?: string | null;
+  presentation?: ExtensionPresentation;
+  resources?: Array<{ name: string; kind: "skill" | "prompt" | "mcp"; state: "configured" | "loaded" | "error"; detail?: string }>;
 }

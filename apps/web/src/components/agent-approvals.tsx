@@ -45,7 +45,10 @@ export function AgentApprovals({
         const r = await api<{ approvals: AgentApproval[] }>(
           "/runs/" + run.id + "/approvals",
         );
-        if (!done) setApprovals(r.approvals);
+        if (!done) {
+          setApprovals(r.approvals);
+          setAnswers((previous) => Object.fromEntries(r.approvals.map((approval) => [approval.id, previous[approval.id] ?? approval.prefill ?? ""])));
+        }
       } catch (e) {
         if (!done) setError(e instanceof Error ? e.message : "读取审批失败");
       }
@@ -117,6 +120,7 @@ export function AgentApprovals({
                 <ShieldCheck className="size-4" />
                 {a.kind === "tool" ? "允许执行 " + a.title : a.title}
               </ConfirmationTitle>
+              {a.expiresAt && <p className="mt-2 text-xs text-muted-foreground">等候至 {new Date(a.expiresAt).toLocaleTimeString("zh-CN")}</p>}
             </div>
             <div className="space-y-3">
               {a.detail && (
@@ -135,7 +139,7 @@ export function AgentApprovals({
                   <PromptInputBody>
                     <PromptInputTextarea
                       aria-label="扩展请求回答"
-                      placeholder="输入回答"
+                      placeholder={a.placeholder || "输入回答"}
                       disabled={busy}
                       value={answers[a.id] || ""}
                       onChange={(e) =>
@@ -173,7 +177,7 @@ export function AgentApprovals({
                   disabled={busy}
                   onClick={() => void answer(a, false)}
                 >
-                  拒绝
+                  {a.kind === "input" || a.kind === "select" ? "取消" : "拒绝"}
                 </ConfirmationAction>
                 {!a.options.length && a.kind !== "input" && (
                   <ConfirmationAction
@@ -201,7 +205,7 @@ export function AgentApprovals({
             <ConfirmationTitle className="flex items-center gap-2 text-xs text-muted-foreground">
               <ShieldX className="size-3.5 shrink-0" />
               <span className="min-w-0 truncate">{a.title}</span>
-              <span className="shrink-0">已拒绝</span>
+              <span className="shrink-0">{a.resolution === "expired" ? "已超时" : a.resolution === "cancelled" ? "已取消" : "已拒绝"}</span>
             </ConfirmationTitle>
           </ConfirmationRejected>
         </Confirmation>

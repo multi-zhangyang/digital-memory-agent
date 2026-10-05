@@ -80,6 +80,6 @@ E2E_PRODUCTION=1 pnpm test:e2e
 
 ## 文档与下一步
 
-明天从[收工交接](docs/plans/2026-10-05-handoff.md)继续：其中记录本机版本、验收结果、保留的证据与恢复文件，以及下一步的验收目标。优先提高训练题的来源支持与时间语义质量，再完善跨会话和中断恢复；个人模型训练等用户恢复安排后推进。
+当前实现与验收见 [Pi 工作台重构](docs/plans/0033-pi-workbench.md)：真实消息和工具流、会话树、持久工作区，以及素材整理、纠正、召回和训练文件交付。此前活动整理与恢复见[生活记忆 Agent](docs/plans/0032-living-memory-agent.md)。下一步围绕真实照片观察质量和复杂活动关联扩大独立对照；个人模型训练继续暂停。
 
 [产品定义](docs/product.md)描述核心任务，[架构](docs/architecture.md)描述模块边界，[文档索引](docs/README.md)汇总当前说明与历史记录，[第三方说明](THIRD_PARTY_NOTICES.md)记录依赖来源、许可和适配。

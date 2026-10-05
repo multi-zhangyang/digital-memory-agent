@@ -1,3 +1,5 @@
+import { timelinePage } from "./timeline-page.js";
+import { extensionPresentation } from "./extension-ui.js";
 import type { FastifyInstance } from "fastify";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -138,6 +140,21 @@ export function registerWorkspaceRoutes(
           updatedAt: new Date().toISOString(),
         }),
       };
+    },
+  );
+  app.get<{ Params: { id: string }; Querystring: { before?: string; limit?: string } }>(
+    "/api/conversations/:id/timeline", async (request): Promise<WorkspaceDetail> => {
+      const conversation = service.conversation(request.params.id);
+      const limit = Number(request.query.limit || 50);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new UserFacingError(400, "LIMIT", "历史页大小应为 1 到 100");
+      const activeEntryIds = await runtime().activeEntries?.(conversation.id);
+      const page = await timelinePage(store, conversation.id, () => runtime().history(conversation.id), request.query.before, limit, activeEntryIds);
+      const active = store.work.activeRun(conversation.id);
+      if (!request.query.before && active && !page.runs.some((run) => run.id === active.id)) page.runs.unshift(active);
+      const ids = new Set(page.runs.flatMap((run) => [...run.assetIds, ...run.sources.map((ref) => ref.assetId)]));
+      return { conversation, ...page, presentation: extensionPresentation(store, conversation.id), activeEntryIds, assets: store.assets().filter((asset) => ids.has(asset.id)),
+        artifacts: store.work.list<Artifact>("artifact", conversation.id),
+        memories: store.work.queries.catalog.page({ conversationId: conversation.id }).memories };
     },
   );
   app.get<{ Params: { id: string } }>(
@@ -287,15 +304,15 @@ export function registerWorkspaceRoutes(
         );
       const answer = request.body.answer.trim();
       if (!answer) throw new UserFacingError(400, "EMPTY", "请输入回答");
-      return {
-        run: store.work.patchRun(
-          run.id,
-          { status: "running", question: { ...run.question, answer } },
-          "answer",
-        ),
-      };
+      return { run: await service.answer(run.id, answer) };
     },
   );
+  app.post<{ Params: { id: string }; Body: { decisions?: { toolCallId: string; action: "skip" | "retry" }[]; acceptConfiguration?: boolean } }>(
+    "/api/runs/:id/resume", { schema: { body: { type: "object", additionalProperties: false, properties: {
+      decisions: { type: "array", maxItems: 50, items: { type: "object", required: ["toolCallId", "action"], additionalProperties: false,
+        properties: { toolCallId: { type: "string", minLength: 1, maxLength: 200 }, action: { enum: ["skip", "retry"] } } } },
+      acceptConfiguration: { type: "boolean" },
+    } } } }, async (request) => ({ run: await service.resume(request.params.id, request.body || {}) }));
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>(
     "/api/runs/:id/events",
     async (request, reply) => {

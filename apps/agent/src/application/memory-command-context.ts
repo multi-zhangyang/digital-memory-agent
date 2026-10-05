@@ -20,8 +20,10 @@ export function commandRun(store: Store, conversationId: string, write = false) 
 
 /** These are evidence-bearing user messages, never a default goal, old assistant text or uploaded instructions. */
 export function deliveredInstructions(run: Run) {
+  const answers = [...(run.questions || []), ...(run.question?.answer ? [run.question] : [])];
+  const questions = [...new Map(answers.map((q) => [q.id || q.toolCallId || "legacy", q])).values()];
   return [{ id: run.id, text: run.text }, ...(run.interventions || []).filter((item) => item.status === "delivered"),
-    ...(run.question?.answer ? [{ id: run.id + ":answer", text: run.question.answer }] : [])];
+    ...questions.flatMap((q) => q.answer ? [{ id: run.id + ":answer" + (q.id ? ":" + q.id : ""), text: q.answer }] : [])];
 }
 
 export function userInstruction(run: Run, quote?: string) {
@@ -34,6 +36,11 @@ export function userInstruction(run: Run, quote?: string) {
 }
 
 const explicitActions: Record<string, RegExp> = {
+  "confirm-activity": /确认|属实|没错|正确|\bconfirm/i,
+  "correct-activity": /改|纠正|更正|修订|修正|应该|应为|\bcorrect|\bchange|\bfix/i,
+  "reject-activity": /拒绝|驳回|不对|错误|不属于|不是同|不要.{0,10}合|\breject/i,
+  "merge-activities": /合并|同一|一次|\bmerge|\bsame/i,
+  "split-activity": /拆|分开|不同|不是同|\bsplit|\bseparate/i,
   confirm: /确认|属实|没错|正确|是对的|无误|\bconfirm|\baccurate\b|\bcorrect\b/i,
   reject: /拒绝|驳回|不对|错误|不属实|删掉|\breject|\bincorrect\b|\bwrong\b/i,
   correct: /改|纠正|更正|修订|修正|应该|应为|不是.+(?:是|为)|\bcorrect|\bchange|\bfix|\bupdate|\brevise/i,
@@ -74,8 +81,13 @@ export function memoryCommandContext(store: Store, run: Run, toolCallId: string,
   if (instruction) {
     const action = (input as { action?: string }).action || "";
     const pattern = explicitActions[action];
-    const answering = instruction.messageId === run.id + ":answer" && /^(好的?|是的?|对的?|确认|可以|没错|yes|ok|correct)[。.!！\s]*$/i.test(instruction.quote.trim());
-    if (!pattern || (!pattern.test(instruction.quote) && !(answering && pattern.test(run.question?.text || ""))))
+    const question = instruction.messageId === run.id + ":answer" ? run.question :
+      [...(run.questions || []), ...(run.question ? [run.question] : [])].find((q) => q.id && instruction.messageId === run.id + ":answer:" + q.id);
+    const affirmative = question && /^(好的?|是的?|对的?|确认|可以|没错|yes|ok|correct)[。.!！\s]*$/i.test(instruction.quote.trim());
+    // A short field answer belongs to the user's already requested correction. Keep the
+    // exact answer as evidence instead of requiring the user to repeat the whole command.
+    const correctionAnswer = question && ["correct", "correct-activity"].includes(action) && pattern?.test(run.text);
+    if (!pattern || (!pattern.test(instruction.quote) && !(affirmative && pattern.test(question.text)) && !correctionAnswer))
       throw new UserFacingError(403, "USER_INSTRUCTION_REQUIRED", "用户原话未明确指定此类变更，请只处理已授权部分或澄清；整理、提取和导出本身不代表确认事实");
   }
   return { actor: basis === "user" ? "user" : "agent", space: "personal", runId: run.id, instruction,
@@ -88,7 +100,10 @@ export function memoryCommandContext(store: Store, run: Run, toolCallId: string,
         throw new UserFacingError(409, "RUN_CHANGED", "任务已停止或上下文改变，操作未提交");
       // This callback is inside the same SQLite transaction as the memory write and outbox event.
       // The current command may have advanced the epoch; check the original run, not the new ledger here.
-      store.work.patchRun(current.id, { memoryEpoch: receipt.epoch, memoryContextReset: { toolCallId, commandId: receipt.id, epoch: receipt.epoch } },
+      const part = current.parts.find((p) => p.type === "tool" && p.toolCallId === toolCallId);
+      const receipts = [...(current.receipts || []).filter((r) => r.toolCallId !== toolCallId),
+        { toolCallId, name: part?.type === "tool" ? part.name : receipt.action, output: { command: receiptSummary(receipt), result: receipt.result } }];
+      store.work.patchRun(current.id, { receipts, memoryEpoch: receipt.epoch, memoryContextReset: { toolCallId, commandId: receipt.id, epoch: receipt.epoch } },
         "memory-command", { command: receiptSummary(receipt) });
     },
   };

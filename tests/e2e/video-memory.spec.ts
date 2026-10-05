@@ -41,6 +41,7 @@ test("original video frame indexes and timed person review work without generate
     await expect(search.getByTestId("video-source-viewer")).toContainText("00:02 / 00:06");
     await search.getByRole("button", { name: "Close", exact: true }).click();
     await page.goto("/?view=memory&filter=people");
+    await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
     const library = page.getByTestId("memory-library");
     if (!(await library.getByRole("button", { name: "素材人物", exact: true }).isVisible())) await library.getByRole("tab", { name: "人物", exact: true }).click();
     await library.getByRole("button", { name: "素材人物", exact: true }).click();
@@ -178,8 +179,6 @@ test("conversation displays actual timed frame pixels and durable result sources
     await composer.locator('button[type="submit"]').click(); const run = (await (await submitted).json()).run as Run;
     const thread = page.locator("#run-" + run.id); await expect(thread).toHaveAttribute("data-run-status", "completed");
     const inspect = async () => {
-      const activity = thread.getByRole("button", { name: "执行记录", exact: true });
-      if (await activity.getAttribute("data-state") === "closed") await activity.click();
       const reads = thread.getByRole("button", { name: /读取原始证据/ }); await expect(reads).toHaveCount(2);
       for (const button of await reads.all()) if (await button.getAttribute("data-state") === "closed") await button.click();
     };

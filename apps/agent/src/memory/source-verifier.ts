@@ -25,8 +25,11 @@ export class MemorySourceVerifier {
       signal?.throwIfAborted();
       if (source.type === "message") {
         const run = this.store.memories.get<Run>("run", source.runId);
-        const text = run && run.conversationId === source.conversationId && (source.messageId === run.id ? run.text
-          : source.messageId === run.id + ":answer" ? run.question?.answer : run.interventions?.find((item) => item.id === source.messageId)?.text);
+        const form = run ? undefined : this.store.db.prepare("SELECT text FROM memory_command_messages WHERE id=? AND conversationId=? AND runId=?").get(source.messageId, source.conversationId, source.runId) as { text: string } | undefined;
+        const text = run && run.conversationId === source.conversationId ? (source.messageId === run.id ? run.text
+          : source.messageId === run.id + ":answer" ? run.question?.answer
+          : source.messageId.startsWith(run.id + ":answer:") ? (run.questions || []).find((q) => run.id + ":answer:" + q.id === source.messageId)?.answer
+          : run.interventions?.find((item) => item.id === source.messageId)?.text) : form?.text;
         const bytes = typeof text === "string" ? Buffer.from(text) : undefined;
         if (!bytes || contentHash(bytes) !== source.sha256 || !this.range(source, bytes.length)
           || bytes.subarray(source.start, source.end).toString("utf8") !== source.quote)

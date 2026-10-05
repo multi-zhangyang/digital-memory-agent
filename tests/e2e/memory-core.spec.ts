@@ -80,6 +80,7 @@ test("text imports expose real processing, evidence, review and corrected people
     },
   ];
   await page.goto("/?view=memory");
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   const dialog = await startImport(page);
   await dialog.getByRole("tab", { name: "文字文件" }).click();
   await dialog
@@ -197,6 +198,7 @@ test("conflicts require visible replacement and synthetic space survives source 
   ).toBeTruthy();
   const current = job.chunks[1].memoryIds[0];
   await page.goto("/?view=memory&panel=memories&item=" + current);
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await expect(
     page.getByText("与已确认信息不同", { exact: true }),
   ).toBeVisible();
@@ -279,6 +281,7 @@ test("import failures and cancellation can be retried from processing records", 
   page,
 }) => {
   await page.goto("/?view=memory");
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   let dialog = await startImport(page);
   await dialog.getByLabel("记录标题").fill("可重试的记录");
   await dialog

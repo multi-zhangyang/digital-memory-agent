@@ -49,6 +49,9 @@ const CodeBlock = dynamic(() =>
 );
 
 const labels: Record<string, string> = {
+  organize_memories: "整理生活活动",
+  query_memory_activities: "查看生活活动",
+  change_memory_activities: "核对生活活动",
   read: "读取文件",
   write: "写入文件",
   edit: "编辑文件",
@@ -83,6 +86,7 @@ const labels: Record<string, string> = {
 
 export function ToolActivity({ part }: { part: ToolUIPart }) {
   const [open, setOpen] = useState<boolean | undefined>();
+  const [tab, setTab] = useState<string>();
   const name = part.type.slice(5);
   const running =
     part.state === "input-streaming" || part.state === "input-available";
@@ -103,13 +107,13 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
   return (
     <Tool
       className="group/tool mb-0 overflow-hidden rounded-none border-0 bg-transparent"
-      open={open ?? failed}
+      open={open ?? (running || failed)}
       onOpenChange={setOpen}
       data-testid="tool-activity"
       data-tool-state={running ? "running" : failed ? "error" : "complete"}
     >
       <ToolHeader
-        className="gap-2 px-0 py-2 text-xs"
+        className="gap-2 px-0 py-3"
         type={part.type}
         state={part.state}
         title={
@@ -124,7 +128,8 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
       />
       <ToolContent>
         <Tabs
-          defaultValue="output"
+          value={tab || (part.state === "input-streaming" ? "input" : "output")}
+          onValueChange={setTab}
           className="rounded-md border bg-muted/20 p-3"
         >
           <TabsList

@@ -11,7 +11,8 @@ test("generates questions through a configured processor and reviews training an
   const tag = "generated" + randomUUID().slice(0, 8);
   const created = await request.post("/api/memories", { data: { title: tag, content: "虚构记录：林舟把备用钥匙交给陈默，陈默随后保管钥匙。" } });
   expect(created.ok()).toBeTruthy(); const entry = (await created.json()).memory;
-  await page.goto("/"); await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.goto("/"); await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   const library = page.getByTestId("memory-library"); await library.getByLabel("搜索记忆").fill(tag);
   await library.getByRole("checkbox", { name: `选择记忆 ${tag}`, exact: true }).check();
   await library.getByRole("button", { name: "数据集", exact: true }).click();
@@ -72,7 +73,8 @@ test("generates questions through a configured processor and reviews training an
   expect(repairedEvaluation.version).toBe(4);
   await page.screenshot({ path: "test-results/generated-dataset.png", fullPage: true, animations: "disabled" });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.reload(); await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.reload(); await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByTestId("memory-library").getByRole("button", { name: "数据集", exact: true }).click();
   const restored = page.getByRole("dialog", { name: "数据集", exact: true }).getByTestId("dataset-row").filter({ hasText: tag });
   await expect(restored).toContainText("已构建"); await expect(restored).toContainText("1 次调用");
@@ -96,6 +98,13 @@ test("generates questions through a configured processor and reviews training an
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   const audited = (await (await request.get(`/api/memory-datasets/${id}/samples`)).json()).samples;
   expect(audited.every((sample: { authority: string; review: { actor: string; jobId: string } }) => sample.authority === "processor-reviewed" && sample.review.actor === "processor" && sample.review.jobId === auditId)).toBeTruthy();
+  expect(audited.every((sample: { question: string; answer: string; answerCheck: { question: string; answerQuote: string; evidenceQuotes: string[] } }) =>
+    sample.answerCheck.question === sample.question && sample.answerCheck.answerQuote === sample.answer && sample.answerCheck.evidenceQuotes.length > 0)).toBeTruthy();
+  await samples.locator('[data-slot="accordion-trigger"]').first().click();
+  await expect(samples.getByTestId("sample-answer-check").first()).toContainText("来源作答");
+  await expect(samples.getByTestId("sample-answer-check").first()).toContainText(entry.content);
+  expect(await samples.getByTestId("sample-answer-check").first().evaluate((node) => node.getBoundingClientRect().right <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: "test-results/dataset-source-answer-mobile.png", fullPage: true, animations: "disabled" });
   await samples.getByRole("radio", { name: "待核对", exact: true }).click();
   await expect(samples.getByText("暂无待核对样本", { exact: true })).toBeVisible();
   await expect(samples.getByText("匹配 0 条", { exact: true })).toBeVisible();
@@ -134,7 +143,8 @@ test("rebuilds corrected selected records, reuses unchanged samples and retains 
     const response = await request.post("/api/memories", { data: { title: tag + " " + i, content: `虚构数据集材料 ${tag} 第 ${i} 条。`, occurredAt: "2026-05-10" } });
     expect(response.ok()).toBeTruthy(); entries.push((await response.json()).memory);
   }
-  await page.goto("/"); await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.goto("/"); await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   const library = page.getByTestId("memory-library"); await library.getByLabel("搜索记忆").fill(tag);
   const boxes = library.getByRole("checkbox", { name: /^选择记忆 / }); await expect(boxes).toHaveCount(2);
   await boxes.nth(0).check(); await boxes.nth(1).check();
@@ -151,7 +161,8 @@ test("rebuilds corrected selected records, reuses unchanged samples and retains 
   expect(lines).toHaveLength(4);
   expect(new Set(lines.map((line) => line.lineage.memoryRefs[0].id))).toEqual(new Set(entries.map((entry) => entry.id)));
   const id = lines[0].lineage.datasetId;
-  await page.reload(); await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.reload(); await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByTestId("memory-library").getByRole("button", { name: "数据集", exact: true }).click();
   const restored = page.getByRole("dialog", { name: "数据集", exact: true }).getByTestId("dataset-row").filter({ hasText: tag });
   await expect(restored).toContainText("已构建");
@@ -193,7 +204,8 @@ test("merges and splits confirmed event records through the review UI", async ({
     const patched = await request.patch(`/api/memories/${entry.id}`, { data: { version: entry.version, category: "event" } });
     expect(patched.ok()).toBeTruthy();
   }
-  await page.goto("/?space=demo"); await page.getByRole("button", { name: "个人记忆", exact: true }).click();
+  await page.goto("/?space=demo"); await page.getByRole("button", { name: "记忆", exact: true }).click();
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByRole("tab", { name: "时间线", exact: true }).click();
   await page.getByRole("button", { name: "事件归组", exact: true }).click();
   let list = page.getByRole("dialog", { name: "事件归组", exact: true });

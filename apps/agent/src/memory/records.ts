@@ -24,6 +24,12 @@ export class MemoryRecords extends RecordStore {
     return this.transaction(() => {
       super.save(kind, next);
       this.ledger.changed(previous, next);
+      if (previous && previous.version !== next.version) {
+        const dependants = this.db.prepare(`SELECT DISTINCT r.id FROM workspace_records r,json_each(r.data,'$.derivedFrom') d
+          WHERE r.kind='memory' AND r.id<>? AND json_extract(r.data,'$.status')='confirmed'
+          AND json_extract(d.value,'$.id')=? AND json_extract(d.value,'$.version')<>?`).all(next.id, next.id, next.version) as { id: string }[];
+        for (const dependant of dependants) this.invalidateDerivedMemory(dependant.id, "活动来源已改变，请重新核对活动内容");
+      }
       return next as unknown as T;
     });
   }
@@ -44,6 +50,22 @@ export class MemoryRecords extends RecordStore {
       createdAt: now(),
       updatedAt: now(),
     });
+  }
+  invalidateDerivedMemory(id: string, reason: string) {
+    const previous = this.get<MemoryEntry>("memory", id);
+    if (!previous?.derivedFrom?.length || previous.status !== "confirmed") return previous;
+    return this.version("memory", { ...previous, version: previous.version + 1, status: "draft", acceptedBy: undefined,
+      editedBy: "agent", reason, uncertainty: reason, updatedAt: now() }, previous.version);
+  }
+  saveDerivedActivity(input: Pick<MemoryEntry, "title" | "content" | "occurredAt" | "place" | "sources" | "evidence"> &
+    { members: { id: string; version: number }[]; previous?: MemoryEntry; reason: string }) {
+    const { members, previous, ...values } = input;
+    if (!members.length || members.some(({ id, version }) => this.get<MemoryEntry>("memory", id)?.version !== version))
+      throw new UserFacingError(409, "SOURCE_CHANGED", "活动来源已更新，请重新核对");
+    const entry = { ...values, status: "confirmed" as const, kind: "statement" as const, category: "event" as const,
+      derivedFrom: members, acceptedBy: "user" as const, editedBy: "user" as const, uncertainty: "", people: [], personIds: [], space: "personal" as const };
+    if (previous) return this.version("memory", { ...previous, ...entry, version: previous.version + 1, updatedAt: now() }, previous.version);
+    return this.createMemory({ ...entry, conversationId: "activity", runId: "activity" });
   }
   /** Used by the independent capture service after exact-message evidence grading. */
   confirmCapturedProfile(id: string, version: number, ingestion: NonNullable<MemoryEntry["ingestion"]>) {

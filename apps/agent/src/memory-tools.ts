@@ -7,6 +7,9 @@ import { EvidenceService } from "./memory/evidence-service.js";
 import { UserFacingError } from "./errors.js";
 
 export const memoryToolCatalog: ToolInfo[] = [
+  { name: "organize_memories", label: "整理生活活动", access: "write", group: "memory" },
+  { name: "query_memory_activities", label: "查看生活活动", access: "read", group: "memory" },
+  { name: "change_memory_activities", label: "核对生活活动", access: "write", group: "memory" },
   { name: "inspect_memories", label: "检查记忆记录", access: "read", group: "memory" },
   { name: "change_memories", label: "修改记忆记录", access: "write", group: "memory" },
   { name: "manage_memory_links", label: "调整人物与事件关联", access: "write", group: "memory" },

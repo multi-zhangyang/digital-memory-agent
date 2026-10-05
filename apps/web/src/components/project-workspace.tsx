@@ -1,9 +1,5 @@
 "use client";
 import {
-  Context,
-  ContextContentHeader,
-} from "@/components/ai-elements/context";
-import {
   FileTree,
   FileTreeFile,
   FileTreeFolder,
@@ -47,7 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, formatBytes } from "@/lib/api";
 import { isActive } from "@/lib/workbench";
@@ -62,31 +58,22 @@ import type {
   Project,
   ProjectFile,
   Run,
-  SessionState,
 } from "@memory/contracts";
 import {
   ArrowLeft,
   ChevronRight,
-  Cpu,
   Download,
   Files,
   FolderOpen,
   Copy,
   Check,
-  GitBranch,
-  GitCompareArrows,
   LoaderCircle,
-  Minimize2,
   Plus,
   RefreshCw,
   Save,
-  TerminalSquare,
   Upload,
-  X,
   MessageSquarePlus,
-  Maximize2,
   File,
-  Search,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -249,18 +236,14 @@ export function ProjectWorkspace({
   onReviewPathChange,
   onReviewComment,
   fileRequest,
-  expanded: workspaceExpanded,
-  onExpand,
-  onFindFile,
   onTabChange: setTab,
-  conversationId,
   runs,
-  onClose,
   onOpenFolder,
   onChanged,
-  onFork,
+  onOpenFile,
 }: {
   project: Project;
+  onOpenFile?: (path: string) => void;
   tab: string;
   reviewRunId: string;
   reviewPath: string | null;
@@ -268,18 +251,11 @@ export function ProjectWorkspace({
   onReviewPathChange: (path: string) => void;
   onReviewComment: (runId: string, path: string, text: string) => boolean;
   fileRequest?: { projectId: string; path: string; nonce: number } | null;
-  expanded?: boolean;
-  onExpand?: () => void;
-  onFindFile: () => void;
   onTabChange: (tab: string) => void;
-  conversationId: string | null;
   runs: Run[];
-  onClose: () => void;
   onOpenFolder: () => void;
   onChanged: () => void;
-  onFork: (id: string) => void;
 }) {
-  const [contextOpen, setContextOpen] = useState(false);
   const [copiedPath, setCopiedPath] = useState(false);
   useEffect(() => {
     if (!copiedPath) return;
@@ -288,7 +264,8 @@ export function ProjectWorkspace({
   }, [copiedPath]);
   const [loadingFile, setLoadingFile] = useState(false);
   const [files, setFiles] = useState<ProjectFile[]>([]);
-  const draft = readEditorDraft(project.id);
+  const editorKey = project.id + (fileRequest ? ":" + fileRequest.path : "");
+  const draft = readEditorDraft(editorKey);
   const [selected, setSelected] = useState<string | undefined>(
     draft?.document.path,
   );
@@ -301,7 +278,6 @@ export function ProjectWorkspace({
   const [newFile, setNewFile] = useState(false);
   const [newPath, setNewPath] = useState("");
   const [search, setSearch] = useState("");
-  const [state, setState] = useState<SessionState | null>(null);
   const [error, setError] = useState("");
   const [viewed, setViewed] = useState<string[]>([]);
   useEffect(() => {
@@ -387,34 +363,6 @@ export function ProjectWorkspace({
   useEffect(() => {
     void refresh();
   }, [runs.at(-1)?.status, refresh]);
-  useEffect(() => {
-    if (!contextOpen) return;
-    let cancelled = false;
-    async function load() {
-      if (!conversationId) {
-        setState(null);
-        return;
-      }
-      try {
-        const result = await api<SessionState>(
-          "/conversations/" + conversationId + "/session",
-        );
-        if (!cancelled) setState(result);
-      } catch {
-        if (!cancelled) setState(null);
-      }
-    }
-    void load();
-    const timer = active
-      ? setInterval(() => {
-          if (document.visibilityState === "visible") void load();
-        }, 5000)
-      : undefined;
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [conversationId, active, busy, contextOpen]);
   async function action(fn: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -480,7 +428,7 @@ export function ProjectWorkspace({
       setFile(updated);
       setContent(updated.content || "");
       setEditing(false);
-      saveEditorDraft(project.id);
+      saveEditorDraft(editorKey);
     });
   }
   const treeNodes = useMemo(() => fileTree(files), [files]);
@@ -501,79 +449,6 @@ export function ProjectWorkspace({
       data-testid="project-workspace"
     >
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
-        <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2">
-          <TabsList
-            variant="line"
-            className="h-full min-w-0 shrink-0 justify-start gap-1 rounded-none p-0"
-          >
-            <TabsTrigger value="files" className="px-2 text-xs">
-              <Files className="size-3.5" />
-              文件
-            </TabsTrigger>
-            <TabsTrigger value="changes" className="px-2 text-xs">
-              <GitCompareArrows className="size-3.5" />
-              改动{current?.changes?.length ? ` ${current.changes.length}` : ""}
-            </TabsTrigger>
-            <TabsTrigger value="terminal" className="px-2 text-xs">
-              <TerminalSquare className="size-3.5" />
-              终端
-            </TabsTrigger>
-          </TabsList>
-          <div className="ml-auto flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="快速打开文件"
-              onClick={onFindFile}
-              className="text-muted-foreground"
-            >
-              <Search className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="会话控制"
-              disabled={!conversationId}
-              onClick={() => setContextOpen(true)}
-              className="text-muted-foreground"
-            >
-              <Cpu className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="刷新项目文件"
-              onClick={() => void refresh()}
-              className="text-muted-foreground"
-            >
-              <RefreshCw className="size-3.5" />
-            </Button>
-            {onExpand && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={workspaceExpanded ? "恢复分栏" : "展开工作区"}
-                onClick={onExpand}
-                className="text-muted-foreground"
-              >
-                {workspaceExpanded ? (
-                  <Minimize2 className="size-3.5" />
-                ) : (
-                  <Maximize2 className="size-3.5" />
-                )}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="关闭项目面板"
-              onClick={onClose}
-              className="text-muted-foreground"
-            >
-              <X className="size-3.5" />
-            </Button>
-          </div>
-        </div>
         <div className="flex shrink-0 items-center gap-1 border-b px-3 py-1.5">
           <Button
             variant="ghost"
@@ -670,7 +545,7 @@ export function ProjectWorkspace({
               <FileTree
                 className="rounded-none border-0 px-2 py-3"
                 selectedPath={selected}
-                onSelect={(path) => void openFile(path)}
+                onSelect={(path) => onOpenFile && !files.find((f) => f.path === path)?.directory ? onOpenFile(path) : void openFile(path)}
                 defaultExpanded={expanded}
               >
                 {search
@@ -714,6 +589,7 @@ export function ProjectWorkspace({
                   size="icon-sm"
                   aria-label="返回文件列表"
                   onClick={() => {
+                    if (fileRequest) { setTab("files"); return; }
                     if (editing && content !== file.content) {
                       setError("请先保存或取消当前修改");
                       return;
@@ -758,7 +634,7 @@ export function ProjectWorkspace({
                     onClick={() => {
                       setContent(file.content || "");
                       setEditing(false);
-                      saveEditorDraft(project.id);
+                      saveEditorDraft(editorKey);
                     }}
                   >
                     取消
@@ -791,7 +667,7 @@ export function ProjectWorkspace({
                   value={content}
                   onChange={(e) => {
                     setContent(e.target.value);
-                    saveEditorDraft(project.id, {
+                    saveEditorDraft(editorKey, {
                       document: file,
                       content: e.target.value,
                     });
@@ -957,156 +833,6 @@ export function ProjectWorkspace({
           )}
         </TabsContent>
       </Tabs>
-      <Dialog open={contextOpen} onOpenChange={setContextOpen}>
-        <DialogContent
-          className="flex max-h-[80svh] flex-col sm:max-w-xl"
-          aria-describedby={undefined}
-        >
-          <DialogHeader>
-            <DialogTitle>会话控制</DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 space-y-6 overflow-y-auto px-1">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span>上下文</span>
-                <span className="text-xs text-muted-foreground">
-                  {state?.context?.tokens?.toLocaleString() ?? "—"} /{" "}
-                  {state?.context?.contextWindow.toLocaleString() ?? "—"}
-                </span>
-              </div>
-              {state?.context?.tokens != null &&
-                state.context.contextWindow > 0 && (
-                  <Context
-                    usedTokens={state.context.tokens}
-                    maxTokens={state.context.contextWindow}
-                  >
-                    <ContextContentHeader className="px-0" />
-                  </Context>
-                )}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!conversationId || active || busy}
-                  onClick={() =>
-                    void action(() =>
-                      api("/conversations/" + conversationId + "/compact", {
-                        method: "POST",
-                        body: "{}",
-                      }),
-                    )
-                  }
-                >
-                  {busy ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <Minimize2 />
-                  )}
-                  压缩上下文
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={!conversationId}
-                  asChild
-                >
-                  <a
-                    href={"/api/conversations/" + conversationId + "/export"}
-                    download
-                  >
-                    <Download />
-                    导出
-                  </a>
-                </Button>
-              </div>
-            </div>
-            {state && (
-              <>
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    可用工具 · {state.tools.filter((t) => t.active).length}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {state.tools.map((t) => (
-                      <Badge
-                        key={t.name}
-                        variant={t.active ? "secondary" : "outline"}
-                      >
-                        {t.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Skills 与提示词
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {state.skills.map((s) => (
-                      <Badge key={s} variant="outline">
-                        /skill:{s}
-                      </Badge>
-                    ))}
-                    {state.prompts.map((s) => (
-                      <Badge key={s} variant="outline">
-                        /{s}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                {Object.entries(state.statuses).map(([key, value]) => (
-                  <p
-                    key={key}
-                    className="break-words text-xs text-muted-foreground"
-                  >
-                    {value.replace(/\x1b\[[0-9;]*m/g, "")}
-                  </p>
-                ))}
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    会话历史 · {state.nodes.length}
-                  </p>
-                  {state.nodes.map((node) => (
-                    <div
-                      key={node.id}
-                      className="flex items-start gap-2 border-l py-2 pl-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-muted-foreground">
-                          {node.role === "user" ? "你" : "digital memory"}
-                        </p>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5">
-                          {node.text || "工具调用"}
-                        </p>
-                      </div>
-                      <Button
-                        aria-label="从此节点分支"
-                        title="从此节点分支"
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={active || busy}
-                        onClick={() =>
-                          void action(async () => {
-                            const result = await api<{
-                              conversation: { id: string };
-                            }>("/conversations/" + conversationId + "/fork", {
-                              method: "POST",
-                              body: JSON.stringify({ entryId: node.id }),
-                            });
-                            onFork(result.conversation.id);
-                          })
-                        }
-                      >
-                        <GitBranch />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>{" "}
-        </DialogContent>
-      </Dialog>
       {error && (
         <div role="alert" className="border-t p-3 text-sm">
           {error}

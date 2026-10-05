@@ -8,7 +8,7 @@ import { buildApp } from "../src/app.js";
 import { DatasetLedger } from "../src/memory/dataset-ledger.js";
 import { ModelAccess } from "../src/model-access.js";
 import { PiMemoryProcessors } from "../src/memory-processors.js";
-import type { DatasetQualityInput } from "../src/dataset-quality-review.js";
+import { DATASET_REVIEW_VERSION, type DatasetQualityInput } from "../src/dataset-quality-review.js";
 import { backupMemory, restoreMemory } from "../src/memory-archive.js";
 import { contentHash } from "../src/memory/values.js";
 
@@ -28,6 +28,7 @@ store.memories.ledger.setSettings({ intake: "manual", capture: "off", indexAsset
 const models = new ModelAccess(config), processor = new PiMemoryProcessors(config, models);
 const inputs: DatasetQualityInput[] = [], outputs: unknown[] = [];
 let app = buildApp(config, { store, processors: { hasModel: (id) => processor.hasModel(id),
+  answerDatasetQuestions: (input, signal) => processor.answerDatasetQuestions(input, signal),
   reviewDatasetSamples: async (input, signal) => {
     inputs.push(structuredClone(input));
     console.log(JSON.stringify({ phase: "processor-review", call: inputs.length, title: input.memory.title, repair: !!input.repair }));
@@ -67,10 +68,10 @@ try {
   checks.independentFullBatch = audits.length === 1 && audits[0].counts.total === before.length && audits[0].counts.processed === before.length;
   checks.auditFailuresPreserved = audits.every((audit) => !audit.counts.failed || audit.status === "failed");
   checks.onlyFrozenSourcesSent = inputs.length >= 6 && inputs.every((input) => source.cases.some((fixture: { memory: DatasetQualityInput["memory"] }) => fixture.memory.content === input.memory.content)
-    && input.samples.length === 3 && Object.keys(input).every((key) => ["memory", "modelId", "samples", "repair"].includes(key)));
+    && input.samples.length === 3 && Object.keys(input).every((key) => ["memory", "modelId", "samples", "repair", "answerChecks"].includes(key)));
   checks.factsAndGenerationUnchanged = JSON.stringify(store.memories.list("memory")) === JSON.stringify(memories) && ledger.list().length === 1 && ledger.get(datasetId).usage?.calls === source.dataset.usage.calls;
   checks.processorReviewsHaveProvenance = samples.some((sample) => sample.review?.actor === "processor") && samples.filter((sample) => sample.review?.actor === "processor")
-    .every((sample) => sample.review!.jobId === audits[0].id && sample.review!.modelId === provider.model.id && sample.review!.protocolVersion === 1);
+    .every((sample) => sample.review!.jobId === audits[0].id && sample.review!.modelId === provider.model.id && sample.review!.protocolVersion === DATASET_REVIEW_VERSION);
   checks.allVersionsRetained = before.every((sample) => !!store.db.prepare("SELECT 1 FROM dataset_sample_versions WHERE id=? AND version=?").get(sample.id, sample.version));
   checks.pairsUseFinalVersions = samples.filter((sample) => sample.intendedUse === "evaluation" && sample.status === "ready").every((sample) => {
     const training = samples.find((target) => target.id === sample.evaluationOf?.id);

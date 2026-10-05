@@ -45,7 +45,7 @@ test("attachment-only mixed upload retries individually and the Agent delivers r
     const first = (await (await submitted).json()).run as Run;
     expect(first.text).toBe(""); expect(first.assetIds).toHaveLength(2); expect(first.goal).toContain("整理本次");
     const thread = page.getByTestId("run-thread").last();
-    await expect(thread).toHaveAttribute("data-run-status", "completed");
+    await expect(thread).toHaveAttribute("data-run-status", "completed", { timeout: 15000 });
     await expect(thread.getByText("两份资料已整理并保存带来源的结果，观察保持待核对。")).toBeVisible();
     await expect(thread.getByTestId("run-job")).toContainText("资料 2 · 已处理 2");
     await page.reload();
@@ -71,9 +71,48 @@ test("attachment-only mixed upload retries individually and the Agent delivers r
     const download = await downloadEvent;
     const rows = (await readFile((await download.path())!, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     expect(rows).toHaveLength(2); expect(rows.every((sample) => sample.lineage.authority === "agent-reviewed")).toBe(true);
+    await deliveredThread.getByRole("button", { name: "查看训练文件", exact: true }).click();
+    const panel = page.getByTestId("dataset-delivery");
+    await expect(panel).toContainText("已核验交付");
+    const panelDownload = panel.getByRole("button", { name: /training.jsonl/ });
+    await expect(panelDownload).toBeEnabled();
+    const panelDownloadEvent = page.waitForEvent("download");
+    await panelDownload.click();
+    expect(await readFile((await (await panelDownloadEvent).path())!, "utf8")).toBe(await readFile((await download.path())!, "utf8"));
+    await expect(panel.getByRole("button", { name: /记忆来源/ }).first()).toBeVisible();
     await page.reload();
     await expect(deliveredThread.getByRole("link", { name: "training.jsonl", exact: true })).toBeVisible();
+    await expect(panel).toContainText("已核验交付");
     await page.screenshot({ path: "test-results/agent-first-delivery.png", fullPage: true, animations: "disabled" });
+
+    const fileUrl = `/api/memory-datasets/${datasetId}/files/training`;
+    await page.route("**" + fileUrl, (route) => route.fulfill({ body: "changed export", contentType: "application/octet-stream" }), { times: 1 });
+    await panelDownload.click();
+    await expect(panel.getByRole("alert")).toContainText("文件已更新，需要重新核验交付");
+    await expect(panel).toContainText("已核验交付");
+    await panel.getByRole("button", { name: "刷新交付" }).click();
+    await expect(panel.getByRole("alert")).toHaveCount(0);
+
+    await panel.getByRole("button", { name: /记忆来源/ }).first().click();
+    const memory = page.getByTestId("workbench-inspector").filter({ visible: true });
+    await memory.getByRole("button", { name: "纠正记忆" }).click();
+    await memory.getByLabel("记忆内容", { exact: true }).fill("2026年9月3日，林舟把备用钥匙交给陈默，陈默将钥匙放在抽屉里。");
+    await memory.getByLabel("纠正原因", { exact: true }).fill("本人补充核对了钥匙存放位置");
+    await memory.getByRole("button", { name: "保存纠正" }).click();
+    await expect(memory.getByLabel("记忆内容", { exact: true })).toHaveCount(0);
+    await page.getByRole("tab", { name: "训练文件", exact: true }).click();
+    await expect(panel).toContainText("交付后已变更");
+    await expect(panelDownload).toBeDisabled();
+    await page.getByLabel("任务指令").fill("保留当前草稿");
+    await panel.getByRole("button", { name: "交给 Agent 核验" }).click();
+    await expect(page.getByLabel("任务指令")).toHaveValue(new RegExp("保留当前草稿[\\s\\S]+" + datasetId));
+    const location = page.url();
+    const rejectedDownload = page.waitForResponse((response) => response.url().endsWith(fileUrl));
+    await deliveredThread.getByRole("link", { name: "training.jsonl", exact: true }).click();
+    const rejected = await rejectedDownload;
+    expect(rejected.status()).toBe(409);
+    await expect(deliveredThread.getByRole("alert")).toContainText((await rejected.json()).error.message);
+    await expect(page).toHaveURL(location);
   } finally {
     const { processingVersion: _version, ...settings } = saved;
     await request.patch("/api/memory-settings", { data: { ...settings, textModelId: saved.textModelId || "", photoModelId: saved.photoModelId || "", datasetModelId: saved.datasetModelId || "" } });

@@ -12,6 +12,7 @@ test("photo import persists vision settings, review, pixel evidence, corrections
     protocol: "openai-completions", supportsImages: false, contextWindow: 256000, maxTokens: 16384, reasoning: true, thinkingLevel: "low",
   } })).ok()).toBeTruthy();
   await page.goto("/?view=memory");
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByRole("button", { name: "导入照片", exact: true }).click();
   let dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "开始提取照片" })).toBeDisabled();
@@ -42,6 +43,7 @@ test("photo import persists vision settings, review, pixel evidence, corrections
 
   const name = "公开照片测试-" + randomUUID().slice(0, 8) + ".png";
   await page.goto("/?view=memory");
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await page.getByRole("button", { name: "导入照片", exact: true }).click();
   dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("处理模型", { exact: true })).toHaveText("photo-browser-test");
@@ -97,6 +99,7 @@ test("photo import persists vision settings, review, pixel evidence, corrections
   await expect(page.getByTestId("run-thread")).toHaveAttribute("data-run-status", "completed");
   await expect(page.getByRole("log").getByText("经人工核对，照片里的测试色块为红色。", { exact: true }).last()).toBeVisible();
   await page.goto("/?view=memory&panel=memories&item=" + id);
+  await page.getByRole("tab", { name: "记忆记录", exact: true }).click();
   await detail.getByRole("button", { name: "停止使用", exact: true }).click();
   await expect(detail.getByText("已停止取用，原文保留")).toBeVisible();
   const found = (await (await request.get("/api/memory-search?query=" + encodeURIComponent("照片 测试色块"))).json()).memories as MemoryEntry[];

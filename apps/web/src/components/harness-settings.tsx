@@ -43,6 +43,7 @@ const newMcp = (): McpConnection => ({
   id: "",
   name: "",
   transport: "http",
+  exposure: "direct",
   url: "",
   command: "",
   args: [],
@@ -397,6 +398,7 @@ export function HarnessSettingsPanel({
                   <Plug />
                   <span className="truncate">{s.name}</span>
                   <Badge variant="outline">{s.transport}</Badge>
+                  <Badge variant="outline">{s.exposure === "deferred" ? "按需" : "直接"}</Badge>
                 </Button>
                 <Switch
                   aria-label={"启用 " + s.name}
@@ -543,6 +545,10 @@ export function HarnessSettingsPanel({
                   <SelectItem value="http">Streamable HTTP</SelectItem>
                   <SelectItem value="stdio">本地进程 · 隔离执行</SelectItem>
                 </SelectContent>
+              </Select>
+              <Select value={mcp.exposure || "direct"} onValueChange={(value) => setMcp({ ...mcp, exposure: value as "direct" | "deferred" })}>
+                <SelectTrigger aria-label="MCP 工具加载方式"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="direct">直接加载</SelectItem><SelectItem value="deferred">按需发现 · tool_search</SelectItem></SelectContent>
               </Select>
               {mcp.transport === "http" ? (
                 <Input

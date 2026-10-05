@@ -69,7 +69,19 @@ export interface TrainingSample {
   evaluationOf?: { id: string; version: number };
   generation?: { modelId: string; version: number };
   quality?: SampleTimeQuality;
+  answerCheck?: SampleAnswerCheck;
   reusedFrom?: { datasetId: string; sampleId: string; version: number };
+}
+
+/** A source-only model assessment, not user confirmation or an accuracy guarantee. */
+export interface SampleAnswerCheck {
+  version: 1;
+  modelId: string;
+  question: string;
+  answerQuote: string;
+  evidenceQuotes: string[];
+  equivalentQuestion: string;
+  reason: string;
 }
 
 export interface DatasetRebuildInput {

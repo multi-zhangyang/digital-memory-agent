@@ -1,0 +1,25 @@
+[project]
+name = "digital-memory-embedding-comparison"
+version = "0.1.0"
+description = "Isolated CPU environment for real EmbeddingGemma 2 retrieval evaluation"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "numpy>=2.2,<3",
+  "pillow>=11,<13",
+  "sentence-transformers[image]==6.1.0",
+  "transformers==5.19.0",
+  "torch==2.14.1",
+  "torchvision==0.29.1",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

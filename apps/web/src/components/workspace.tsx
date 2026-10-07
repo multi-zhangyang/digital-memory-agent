@@ -1,11 +1,5 @@
 "use client";
 import {
-  Context,
-  ContextContent,
-  ContextContentHeader,
-  ContextTrigger,
-} from "@/components/ai-elements/context";
-import {
   Conversation as AIConversation,
   ConversationContent,
   ConversationEmptyState,
@@ -116,11 +110,13 @@ import { useTheme } from "next-themes";
 import dynamic from "next/dynamic";
 import { usePanelRef } from "react-resizable-panels";
 import {
+  Activity,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useTransition,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -129,44 +125,39 @@ import { SessionControls } from "./session-controls";
 import { TimelineHistory } from "./timeline-history";
 import { DatasetDeliveryPanel } from "./dataset-delivery";
 import { TaskLauncher } from "./task-launcher";
+import { WorkbenchPages, WorkbenchPageSkeleton, usePreloadWorkbenchPages } from "./workbench-pages";
+import { WorkbenchCommandPalette } from "./workbench-command-palette";
 import { ProjectMenu } from "./project-menu";
 import { WorkbenchComposer } from "./workbench-composer";
 import {
   WorkbenchNavigation,
   type WorkbenchPage,
 } from "./workbench-navigation";
-const TaskLibrary = dynamic(() =>
-  import("./task-library").then((m) => m.TaskLibrary),
-);
+const TaskLibrary = dynamic(() => import("./task-library").then((m) => m.TaskLibrary));
 const ProjectWorkspace = dynamic(
   () => import("./project-workspace").then((m) => m.ProjectWorkspace),
-  { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
+  { loading: WorkbenchPageSkeleton },
 );
 const WorkspaceFolderDialog = dynamic(() =>
   import("./workspace-folder-dialog").then((m) => m.WorkspaceFolderDialog),
+  { loading: () => null },
 );
 const ProjectFilePicker = dynamic(() =>
   import("./project-file-picker").then((m) => m.ProjectFilePicker),
+  { loading: () => null },
 );
 const WorkbenchInspector = dynamic(
   () => import("./workbench-inspector").then((m) => m.WorkbenchInspector),
-  { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
+  { loading: WorkbenchPageSkeleton },
 );
-const ArtifactLibrary = dynamic(() =>
-  import("./artifact-library").then((m) => m.ArtifactLibrary),
-);
-const RunThread = dynamic(() =>
-  import("./run-thread").then((m) => m.RunThread),
-);
-const LegacyMessages = dynamic(() => import("./legacy-messages").then((m) => m.LegacyMessages));
-const WorkbenchCommandPalette = dynamic(() => import("./workbench-command-palette").then((m) => m.WorkbenchCommandPalette));
+const ArtifactLibrary = dynamic(() => import("./artifact-library").then((m) => m.ArtifactLibrary));
+const RunThread = dynamic(() => import("./run-thread").then((m) => m.RunThread), { loading: () => <Skeleton className="h-24 w-full" /> });
+const LegacyMessages = dynamic(() => import("./legacy-messages").then((m) => m.LegacyMessages), { loading: () => <Skeleton className="h-24 w-full" /> });
 const AssetLibrary = dynamic(
   () => import("./asset-library").then((m) => m.AssetLibrary),
-  { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
 );
 const MemoryLibrary = dynamic(
   () => import("./memory-home").then((m) => m.MemoryHome),
-  { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
 );
 const ActivityInspector = dynamic(() => import("./memory-activities").then((m) => m.ActivityInspector));
 const MemoryActivitiesPage = dynamic(() => import("./memory-activities").then((m) => m.MemoryActivitiesPage));
@@ -174,7 +165,6 @@ const MemoryDatasetsPage = dynamic(() => import("./memory-datasets").then((modul
 const ProcessingCenter = dynamic(() => import("./processing-center").then((module) => module.ProcessingCenter));
 const SettingsPanel = dynamic(
   () => import("./settings-panel").then((m) => m.SettingsPanel),
-  { loading: () => <Skeleton className="m-6 h-64 rounded-lg" /> },
 );
 
 type Page = WorkbenchPage;
@@ -208,7 +198,7 @@ export function Workspace() {
       className="h-svh min-h-0 overflow-hidden"
       style={
         {
-          "--sidebar-width": "16rem",
+          "--sidebar-width": "15rem",
           "--sidebar-width-icon": "3rem",
         } as CSSProperties
       }
@@ -220,11 +210,12 @@ export function Workspace() {
 
 function WorkspaceContent() {
   const { setOpenMobile } = useSidebar();
-  const mobile = useIsMobile(1280);
+  const mobile = useIsMobile(1100);
   const [nav, setNav] = useState<Navigation>(initialNavigation);
+  const [navigating, startNavigation] = useTransition();
   const navRef = useRef(nav);
-  navRef.current = nav;
   const { snapshot, setSnapshot, refreshVersion, configuration, projects, setProjects, harness, tools, ready, error, setError, refresh, refreshSnapshot } = useWorkbenchData();
+  usePreloadWorkbenchPages(ready);
   const [projectId, setProjectId] = useState("default");
   const [projectOpen, setProjectOpen] = useState(false);
   const [surfaceExpanded, setSurfaceExpanded] = useState(false);
@@ -232,6 +223,7 @@ function WorkspaceContent() {
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [surfaceRequest, setSurfaceRequest] = useState<{ sessionKey: string; tab: SurfaceTab } | null>(null);
   const mainPanel = usePanelRef();
+  const inspectorPanel = usePanelRef();
   const [projectTab, selectProjectTab] = useState("files");
   const setProjectTab = (tab: string) => {
     selectProjectTab(tab);
@@ -244,6 +236,8 @@ function WorkspaceContent() {
     setReviewPath(null);
   }, [nav.task]);
   const [submitting, setSubmitting] = useState(false);
+  const [compacting, setCompacting] = useState(false);
+  const [sessionRevision, setSessionRevision] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [taskFilter, setTaskFilter] = useState("recent");
@@ -261,7 +255,7 @@ function WorkspaceContent() {
     (patch: Partial<Navigation>) => {
       const next = { ...navRef.current, ...patch };
       navRef.current = next;
-      setNav(next);
+      startNavigation(() => setNav(next));
       setOpenMobile(false);
       const params = new URLSearchParams();
       if (next.view !== "chat") params.set("view", next.view);
@@ -328,7 +322,7 @@ function WorkspaceContent() {
       setProjectOpen(params.get("workspace") === "1");
       const view = params.get("view") as Page;
       const tab = params.get("panel") as InspectorTarget["tab"];
-      setNav({
+      const next: Navigation = {
         view: [...navItems.map((item) => item.id), "settings"].includes(view)
           ? view
           : "chat",
@@ -346,7 +340,9 @@ function WorkspaceContent() {
               timestamp: params.has("timestamp") ? Number(params.get("timestamp")) : undefined,
             }
           : null,
-      });
+      };
+      navRef.current = next;
+      setNav(next);
     };
     setMounted(true);
     setProjectId(localStorage.getItem("digital-memory.project") || "default");
@@ -793,6 +789,14 @@ function WorkspaceContent() {
   });
   const projectMenu = <ProjectMenu project={project} projects={projects} onSelect={selectProject}
     onOpenFolder={openProjectFolder} onCreate={() => { setDialog({ type: "project" }); setDialogTitle(""); }} />;
+  async function compactConversation(instructions?: string) {
+    if (!nav.task) return;
+    setCompacting(true);
+    try {
+      await api("/conversations/" + nav.task + "/compact", { method: "POST", body: JSON.stringify({ instructions }) });
+      setSessionRevision((value) => value + 1);
+    } finally { setCompacting(false); }
+  }
   const composer = ready ? (
     <WorkbenchComposer
       projectMenu={projectMenu}
@@ -810,18 +814,14 @@ function WorkspaceContent() {
       models={configuration?.models || []}
       providers={configuration?.providers || []}
       running={running}
-      submitting={submitting}
+      submitting={submitting || compacting}
       onSubmit={async () => {
         const draft = readDraft(draftKey, fallbackDraft);
         const command = draft.text.trim();
-        if (command === "/compact" && nav.task) {
+        if (/^\/compact(?:\s|$)/.test(command) && nav.task) {
           try {
-            await api("/conversations/" + nav.task + "/compact", {
-              method: "POST",
-              body: "{}",
-            });
+            await compactConversation(command.slice("/compact".length).trim() || undefined);
             consumeDraft(draft);
-            setProjectOpen(true);
           } catch (e) {
             setError(e instanceof Error ? e.message : "压缩失败");
           }
@@ -885,9 +885,10 @@ function WorkspaceContent() {
     <Skeleton className="h-32 w-full rounded-lg" />
   );
   const renderResource = (target: InspectorTarget, close: () => void) => target.tab === "activities" ? (target.id ? <ActivityInspector key={target.id} id={target.id} onInspect={inspect}
-    onClose={close} onChanged={() => { void refresh(); void task.refresh(); }} onReference={(text) => {
+    onClose={close} onChanged={() => { void refresh(); void task.refresh(); }} onReference={(text, assetIds) => {
       const current = readDraft(draftKey, fallbackDraft);
-      setDraft({ ...current, text: [current.text, text].filter(Boolean).join("\n\n") }); navigate({ view: "chat", ...(mobile ? { target: null } : {}) });
+      setDraft({ ...current, useMemory: true, assetIds: [...new Set([...current.assetIds, ...(assetIds || [])])],
+        text: [current.text, text].filter(Boolean).join("\n\n") }); navigate({ view: "chat", ...(mobile ? { target: null } : {}) });
       requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="任务指令"]')?.focus());
     }} /> : <div className="h-full overflow-auto p-6"><MemoryActivitiesPage assets={snapshot.assets} onInspect={inspect} /></div>) : target ? (
     <WorkbenchInspector
@@ -958,15 +959,15 @@ function WorkspaceContent() {
       onSelect={(surface) => { setSurfaceRequest(null); if (surface.target) navigate({ target: surface.target }); else { navigate({ target: null }); selectProjectTab(surface.view || "files"); setProjectOpen(true); } }}
       onClose={() => { setSurfaceRequest(null); navigate({ target: null }); setProjectOpen(false); focusComposer(); }} />
   ) : nav.target ? renderResource(nav.target, () => navigate({ target: null })) : null;
-  const main =
-    nav.view === "settings" ? (
+  const renderPage = (view: Page) =>
+    view === "settings" ? (
       <SettingsPanel
         configuration={configuration}
         tools={tools}
         project={project}
         onRefresh={refresh}
       />
-    ) : nav.view === "assets" ? (
+    ) : view === "assets" ? (
       <AssetLibrary
         key={nav.collection || "all"}
         title={
@@ -992,7 +993,7 @@ function WorkspaceContent() {
           setDialogTitle("");
         }}
       />
-    ) : nav.view === "memory" ? (
+    ) : view === "memory" ? (
       <MemoryLibrary
         view={nav.memoryView}
         onViewChange={(memoryView) => navigate({ memoryView, target: null })}
@@ -1009,19 +1010,19 @@ function WorkspaceContent() {
         onChanged={refresh}
         onClearInspector={() => navigate({ target: null })}
       />
-    ) : nav.view === "datasets" ? (
+    ) : view === "datasets" ? (
       <MemoryDatasetsPage models={configuration?.models || []} onOpen={(id) => inspect({ tab: "memories", id })} />
-    ) : nav.view === "processing" ? (
+    ) : view === "processing" ? (
       <ProcessingCenter onMemory={(id) => inspect({ tab: "memories", id })} onAsset={(id) => inspect({ tab: "assets", id })}
         onActivity={(id) => inspect({ tab: "activities", id })}
         onDatasets={() => navigate({ view: "datasets", target: null })} onSettings={() => navigate({ view: "settings", target: null })} />
-    ) : nav.view === "artifacts" ? (
+    ) : view === "artifacts" ? (
       <ArtifactLibrary
         artifacts={snapshot.artifacts}
         onOpen={(id) => inspect({ tab: "artifacts", id })}
         onStart={() => navigate({ view: "chat", task: null })}
       />
-    ) : nav.view === "tasks" ? (
+    ) : view === "tasks" ? (
       <TaskLibrary
         key={project?.id}
         project={project}
@@ -1051,7 +1052,7 @@ function WorkspaceContent() {
               <ConversationContent className="mx-auto w-full max-w-3xl gap-10 px-5 py-8 sm:px-6">
                 <TimelineHistory hasMore={!!task.detail.page?.hasMore} loading={task.loadingMore}
                   version={(task.detail.page?.before || "") + task.detail.runs.length} onLoad={task.loadMore} />
-                <LegacyMessages messages={task.detail.legacyMessages} />
+                {!!task.detail.legacyMessages.length && <LegacyMessages messages={task.detail.legacyMessages} />}
                 {task.detail.runs
                   .filter((run) => run.status !== "queued")
                   .map((run) => (
@@ -1130,6 +1131,8 @@ function WorkspaceContent() {
     ) : (
       <TaskLauncher
         composer={composer}
+        conversations={snapshot.conversations}
+        onTask={(id) => navigate({ view: "chat", task: id, target: null })}
         onPrompt={(text) => {
           setDraft({ ...readDraft(draftKey, fallbackDraft), text });
           document
@@ -1142,11 +1145,13 @@ function WorkspaceContent() {
     );
 
   useEffect(() => {
+    if (inspector && !mobile) inspectorPanel.current?.resize("50%");
+    else inspectorPanel.current?.collapse();
     if (!inspector || mobile) {
       mainPanel.current?.expand();
       setSurfaceExpanded(false);
     }
-  }, [!!inspector, mobile, mainPanel]);
+  }, [!!inspector, mobile, mainPanel, inspectorPanel]);
   const navigationActions = {
     onTheme: useLatestCallback(() => setTheme(dark ? "light" : "dark")),
     onView: useLatestCallback((view: WorkbenchPage) =>
@@ -1193,29 +1198,29 @@ function WorkspaceContent() {
   return (
     <>
       <WorkbenchNavigation
-        view={nav.view}
-        taskId={nav.task}
+        view={navRef.current.view}
+        taskId={navRef.current.task}
         conversations={snapshot.conversations}
         collections={snapshot.collections}
-        collectionId={nav.collection}
+        collectionId={navRef.current.collection}
         dark={dark}
         {...navigationActions}
       />
-      <SidebarInset className="h-svh min-w-0 overflow-hidden md:h-[calc(100svh-1rem)]">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 px-3 sm:px-5">
+      <SidebarInset className="h-svh min-w-0 overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-2">
             <SidebarTrigger aria-label="切换侧栏" />
             {nav.view === "chat" && selectedConversation ? taskMenu(selectedConversation, "任务菜单", (
-              <Button variant="ghost" size="sm" className="min-w-0 max-w-40 sm:max-w-80"
+              <Button variant="ghost" size="sm" className="min-w-0 max-w-24 sm:max-w-56 lg:max-w-80"
                 aria-label={"任务菜单 " + selectedConversation.title}>
                 <span className="truncate">{task.detail?.presentation?.title || selectedConversation.title}</span>
                 <ChevronDown data-icon="inline-end" />
               </Button>
             )) : nav.view !== "chat" ? (
-              <h1 className="truncate text-sm font-medium">{nav.view === "settings" ? "设置" : nav.view === "tasks" ? "全部对话" : navItems.find((item) => item.id === nav.view)?.label}</h1>
-            ) : null}
+              <span className="truncate text-sm text-muted-foreground">{nav.view === "settings" ? "设置" : nav.view === "tasks" ? "全部对话" : navItems.find((item) => item.id === nav.view)?.label}</span>
+            ) : <span className="text-sm text-muted-foreground">新对话</span>}
           </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
             {nav.view === "chat" && running && (
               <span role="status" className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
                 <LoaderCircle className="size-3.5 animate-spin" />
@@ -1224,27 +1229,17 @@ function WorkspaceContent() {
             )}
             {task.connection === "reconnecting" && <span role="status" className="text-xs text-muted-foreground">重新连接…</span>}
             {!ready && <span role="status" className="text-xs text-muted-foreground">连接中</span>}
-            {nav.view === "chat" && latest?.usage && model && (
-              <div className="hidden sm:block">
-                <Context usedTokens={latest.usage.context} maxTokens={model.contextWindow}>
-                  <ContextTrigger aria-label="本轮上下文用量" size="sm" />
-                  <ContextContent>
-                    <ContextContentHeader />
-                    <div className="flex flex-col gap-1 p-3 text-xs text-muted-foreground">
-                      <p>最近一次模型请求</p>
-                      <p>输入 {latest.usage.input.toLocaleString()} · 缓存读取 {latest.usage.cacheRead.toLocaleString()}</p>
-                      <p>本次运行输出 {latest.usage.output.toLocaleString()}</p>
-                    </div>
-                  </ContextContent>
-                </Context>
-              </div>
-            )}
-            {nav.task && nav.view === "chat" && model && <SessionControls key={nav.task} conversationId={nav.task}
-              busy={!!running || !!queued.length} revision={latest?.finishedAt}
+            {nav.view === "chat" && compacting && <span role="status" className="text-xs text-muted-foreground">正在压缩…</span>}
+            {nav.task && task.detail && model && <Activity mode={nav.view === "chat" ? "visible" : "hidden"}><SessionControls key={nav.task} conversationId={nav.task}
+              busy={!!running || !!queued.length || submitting || compacting} revision={`${latest?.finishedAt || ""}:${sessionRevision}`} onCompact={compactConversation}
+              onUseResource={(command) => {
+                const current = readDraft(draftKey, fallbackDraft);
+                setDraft({ ...current, text: [command, current.text].filter(Boolean).join(" ") }); focusComposer();
+              }}
               onNavigate={async (text) => {
                 if (text) { const current = readDraft(draftKey, fallbackDraft); setDraft({ ...current, text: [current.text, text].filter(Boolean).join("\n\n") }); }
                 await task.refresh(true); await refreshSnapshot();
-              }} onFork={(entryId) => forkConversation(nav.task!, entryId)} />}
+              }} onFork={(entryId) => forkConversation(nav.task!, entryId)} /></Activity>}
             {nav.view === "chat" && (
               <ButtonGroup>
                 <Button variant={inspector ? "secondary" : "ghost"} size="sm" aria-label="切换工作区" aria-expanded={!!inspector}
@@ -1296,31 +1291,30 @@ function WorkspaceContent() {
             </AlertDescription>
           </Alert>
         )}
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1" aria-busy={navigating}>
             <ResizablePanelGroup orientation="horizontal">
               <ResizablePanel
                 id="main"
-                defaultSize="46%"
-                minSize="400px"
+                defaultSize="100%"
+                minSize={mobile ? "0px" : "360px"}
                 collapsible
                 collapsedSize="0%"
                 panelRef={mainPanel}
                 className="flex min-h-0 flex-col"
               >
-                {main}
+                <WorkbenchPages current={nav.view} renderPage={renderPage} />
               </ResizablePanel>
-              {!mobile && inspector && (
-                <>
-                  <ResizableHandle />
-                  <ResizablePanel
-                    id="inspector"
-                    defaultSize="54%"
-                    minSize="440px"
-                  >
-                    {inspector}
-                  </ResizablePanel>
-                </>
-              )}
+              <ResizableHandle className={mobile || !inspector ? "hidden" : undefined} />
+              <ResizablePanel
+                id="inspector"
+                defaultSize="0%"
+                minSize="360px"
+                collapsible
+                collapsedSize="0%"
+                panelRef={inspectorPanel}
+              >
+                {!mobile && inspector && <div className="h-full min-w-0 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-2 motion-safe:duration-200">{inspector}</div>}
+              </ResizablePanel>
             </ResizablePanelGroup>
         </div>
       </SidebarInset>

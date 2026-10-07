@@ -46,7 +46,12 @@ composition and responsive layout without changing the table primitive or theme.
 生活活动视图组合官方 Card、FieldGroup、Input、Textarea、Checkbox、Accordion、
 Tabs、Empty、Skeleton 和 Alert。导航调整 Sidebar 的组合和宽度，详情在窄屏使用
 现有官方 Sheet；活动命令仍由服务端实施。`useIsMobile` 接受可选断点，使详情在
-1024px 切换而 Sidebar 保留原默认断点。沿用 neutral 主题与 Geist，没有独立控件或主题。
+1100px 以下切换而 Sidebar 保留原默认断点。沿用 neutral 主题与 Geist，没有独立控件或主题。
+
+工作台交互重构继续组合官方 Sidebar、Tabs、Card、FieldGroup 和 Skeleton。首页建议与
+输入复用 AI Elements Suggestion / PromptInput，未替换官方滚动实现。应用层通过 React
+Activity 保留页面状态并暂停隐藏页 effects，通过 memo 复用不变的 Markdown 与工具结果。
+过渡使用现有 tw-animate-css，尊重 prefers-reduced-motion；没有新增动画或基础控件依赖。
 
 MIT License
 
@@ -168,6 +173,30 @@ ToolInput / ToolOutput 与 CodeBlock；局部预览使用包含原件和图像�
 图片加载失败由 shadcn Alert 显示。样本修订使用既有 FieldGroup / Field / Input /
 Textarea / Button。未复制另一套基础控件，也未修改这些上游组件实现。
 
+### 会话与响应适配（2026-10-07）
+
+会话控制沿用 AI Elements Context 和 shadcn Dialog、Tabs、Field、Button：读取 Pi session 的上下文用量，保留原生压缩摘要；压缩保留重点和资源使用入口是业务组合，未修改上游基础组件。
+
+AI Elements `MessageResponse` 使用 React 默认浅比较，避免仅比较正文时吞掉
+`isAnimating` 完成事件；业务 Markdown 接入 Streamdown 自带 `animated`、
+`isAnimating` 与 `styles.css`，150ms 淡入、不增加 stagger，历史内容不运行
+流式动画。减少动画偏好同时用于 Streamdown 样式和官方 Shimmer。
+ToolContent 使用 tw-animate-css 已有的 Radix collapsible 高度动画；业务层
+控制工具摘要、展开选择及结果页签，不随执行完成自动折叠。Reasoning 在显式
+`defaultOpen=false` 时同时禁用自动开合，保留用户手动展开的思考内容。没有复制参考项目
+的前端实现；调研来源及采用边界见[阶段 0039](docs/plans/0039-agent-interaction-and-tool-loading.md)。
+
+ConversationContent 在 Collapsible 触发器及工具页签的指针、键盘操作之前调用
+`use-stick-to-bottom` 的 `stopScroll`，避免手动展开被当成流式增量自动贴底。
+继续使用官方滚动实现和回到底部按钮。工具参数与结果的动态 CodeBlock 使用
+shadcn Skeleton 作为局部 loading 边界，避免首次加载挂起上层消息、缩短会话高度。
+原有 Collapsible 高度动画保留。
+
+业务导航使用 React transition、Suspense 与 Activity 保留页面状态；空闲时分次加载
+常用页面代码，移除整页重复淡入。命令面板仍由 shadcn Command 组成；审批代码详情
+复用官方 CodeBlock 与 Skeleton 的局部加载边界。会话控制及终态任务状态复用已有
+组件内状态，运行中的状态与主动操作照常刷新。未替换 AI Elements 滚动或流式组件。
+
 ### 视频证据组合
 
 视频工具结果、处理来源与记忆证据使用现有 AI Elements `Attachment`、
@@ -256,7 +285,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-## Local memory processing
+## 特征服务与可选旧版本地适配
+
+具体编码器仅作为显式启用的兼容适配和隔离评测依赖，不是默认部署。
+
+- exifr 7.1.3: https://github.com/MikeKovarik/exifr — MIT；在服务端读取 EXIF 元信息，发送的图片由 sharp 去除附加信息。
 
 - sqlite-vec 0.1.9: https://github.com/asg017/sqlite-vec — MIT OR Apache-2.0, Alex Garcia. The trusted installed extension is loaded by the server; arbitrary extension loading is then disabled.
 - multilingual-e5-small: https://huggingface.co/intfloat/multilingual-e5-small — MIT.
@@ -273,3 +306,30 @@ Public evaluation portraits retain author, license and source attribution in
 `examples/people/manifest.json` and its README. In particular, the 2009 Obama
 portrait by Pete Souza uses CC BY 3.0; it is not labeled public domain.
 Other public photo attributions are in `examples/photos/manifest.json`.
+
+### 统一嵌入隔离评估
+
+实验使用 [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2)
+固定版本 `914f7f89142e33e77833254d9c9b90c3cef7303b`，许可 Apache-2.0。
+通过 [Sentence Transformers](https://github.com/huggingface/sentence-transformers)
+与 [Transformers](https://github.com/huggingface/transformers)（均 Apache-2.0）
+加载官方模型，关闭音频，仅测文字与视觉。PyTorch 与 torchvision 使用上游
+BSD 风格许可。实验环境单独锁定；权重及其上游模型说明保存在忽略的模型缓存。
+没有复制或修改这些库的实现，也没有替换正式 worker。公开图像和视频的署名、
+来源与许可分别保留在 `examples/quality/images.json`、`examples/videos/manifest.json`。
+
+### 人脸 GPU 隔离评估
+
+使用 [InsightFace](https://github.com/deepinsight/insightface) 的 SCRFD 检测、
+ArcFace R50 识别和五点对齐代码，固定提交
+`3e6486942a1be2da0e5b475fac375ea73264bd21`（v0.7），代码许可 MIT。
+三个上游 Python 文件原样下载到忽略目录，使用空包入口绕过整包自动下载和
+无关功能；未修改检测解码、对齐或识别预处理。代码许可原文随缓存保留。
+
+`buffalo_m` / `buffalo_l` 官方发布包中的预训练权重限非商业研究用途，
+不继承代码的 MIT 商业授权。实验只加载两个检测器与共享的
+`ResNet50@WebFace600K`，不加载年龄、性别或密集关键点模型。
+固定来源、发布包及提取文件摘要见 `examples/quality/face-models.json`。
+ONNX Runtime 使用 MIT 许可；CUDA/cuDNN 库遵循 NVIDIA 对应许可。
+公开照片的来源和署名仍保留在 `examples/quality/images.json`，压力测试仅在
+本地生成派生像素。正式 worker 尚未切换。

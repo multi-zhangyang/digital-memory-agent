@@ -14,6 +14,7 @@ export function registerActivityRoutes(app: FastifyInstance, store: Store, organ
     const run = store.work.get<Run>("run", request.params.id);
     if (!run) throw new UserFacingError(404, "NOT_FOUND", "任务不存在");
     const ids = [...new Set([...(run.jobs || []).filter((job) => job.kind === "memory-organization").flatMap((job) => organization.job(job.id).activityIds),
+      ...organization.activities.related(store.memoryCommands.receipts(run.id).flatMap((receipt) => receipt.after.map((ref) => ref.id)), [], run.scope === "selected" ? run.assetIds : undefined).map((a) => a.id),
       ...store.memoryCommands.receipts(run.id).flatMap((receipt) => ((receipt.result as { activities?: MemoryActivity[] })?.activities || []).map((a) => a.id))])];
     const activities = organization.activities.current(ids, run.scope === "selected" ? run.assetIds : undefined);
     return { activities: activities.slice(0, 20), total: activities.length };
@@ -24,9 +25,13 @@ export function registerActivityRoutes(app: FastifyInstance, store: Store, organ
       offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 50 } } } },
   }, async (request) => organization.activities.list({ ...request.query, assetIds: request.query.assetId ? [request.query.assetId] : undefined }));
   app.get<{ Params: { id: string } }>("/api/memory-activities/:id", { schema: { params } }, async (request) => organization.activities.detail(request.params.id));
-  app.post<{ Body: { assetIds: string[]; requestId: string } }>("/api/memory-organization", { schema: { body: {
-    type: "object", additionalProperties: false, required: ["assetIds", "requestId"], properties: { assetIds: { type: "array", minItems: 1, maxItems: 200, uniqueItems: true, items: uuid }, requestId: uuid },
-  } } }, async (request) => organization.submit(request.body, { requestId: request.body.requestId, ownership: "library" }));
+  app.post<{ Body: { assetIds: string[]; requestId: string; targetActivityId?: string; description?: string } }>("/api/memory-organization", { schema: { body: {
+    type: "object", additionalProperties: false, required: ["assetIds", "requestId"], properties: { assetIds: { type: "array", minItems: 1, maxItems: 200, uniqueItems: true, items: uuid }, requestId: uuid,
+      targetActivityId: uuid, description: { type: "string", maxLength: 12000 } },
+  } } }, async (request) => organization.submit({ assetIds: request.body.assetIds, targetActivityId: request.body.targetActivityId,
+    context: request.body.description?.trim() ? { messages: [{ id: request.body.requestId, text: request.body.description }],
+      referenceTime: new Date().toISOString(),
+      timeZone: store.memories.ledger.settings().timeZone } : undefined }, { requestId: request.body.requestId, ownership: "library" }));
   app.post<{ Params: { id: string }; Body: ActivityChange }>("/api/memory-activities/:id/commands", { schema: { params, body: activityChangeSchema } }, async (request) => {
     // Keep the real submitted form as instruction provenance; no assistant-authored confirmation.
     if (request.body.refs[0]?.id !== request.params.id) throw new UserFacingError(400, "ACTIVITY_MISMATCH", "活动与修改请求不一致");

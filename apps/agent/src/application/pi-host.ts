@@ -6,12 +6,16 @@ import { prepareResources } from "./pi-resources.js";
 import { digitalMemoryProfile } from "../harness/product-profile.js";
 import { TaskContextPolicy } from "./task-context.js";
 import { extensionPresentation } from "./extension-ui.js";
+import type { MemoryActivities } from "../memory/activities.js";
 
-export function createPiHost(store: Store, tools: (id: string) => ToolDefinition[]): PiHost {
+// A small product starting set; the remaining definitions are loaded by Pi tool_search.
+const coreTools = new Set(["read", "ask_user", "search_memories", "search_evidence", "read_evidence"]);
+
+export function createPiHost(store: Store, tools: (id: string) => ToolDefinition[], activities?: MemoryActivities): PiHost {
   return {
     sessionsDir: store.sessionsDir,
     systemPrompt: digitalMemoryProfile.systemPrompt,
-    context: new TaskContextPolicy(store),
+    context: new TaskContextPolicy(store, activities),
     project: (id) => {
       const project = store.harness.project(store.harness.association(id).projectId);
       return { ...project, directory: store.harness.root(project.id) };
@@ -29,7 +33,12 @@ export function createPiHost(store: Store, tools: (id: string) => ToolDefinition
           detail: !server.enabled ? "已停用" : statuses["mcp:" + server.name] || (server.exposure === "deferred" ? "按需发现" : "直接加载") })),
       ];
     },
-    tools,
+    tools: (id) => {
+      const disabled = store.harness.project(store.harness.association(id).projectId).disabledTools;
+      return tools(id).map((tool) => ({ ...tool,
+        exposure: disabled.includes(tool.name) ? "hidden" : coreTools.has(tool.name) ? "direct" : "deferred",
+      }));
+    },
     waiting: (runId) => ["user", "approval", "recovery"].includes(store.work.get<Run>("run", runId)?.waitingFor || ""),
     resumableTools: (runId) => store.harness.approvals(runId).flatMap((approval) =>
       approval.kind === "tool" && approval.status !== "pending" && !approval.consumedBy && approval.toolCallId ? [approval.toolCallId] : []),

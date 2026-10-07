@@ -92,7 +92,7 @@ export class AssetIndexService {
         const pieces = this.data.memories.transaction(() => this.index.write(asset, text));
         const result = await this.features.indexSource(asset, pieces, current, this.controller.signal);
         if (current() && !this.closed) this.patch(asset.id, "failedFrames" in result && result.failedFrames ? "failed" : "completed",
-          "failedFrames" in result && result.failedFrames ? `${result.failedFrames} 个画面的本地索引未完成` : result.state === "unavailable" ? "本地语义处理不可用，已建立关键词索引" : null, result.fingerprint || null);
+          "failedFrames" in result && result.failedFrames ? `${result.failedFrames} 个画面的特征索引未完成` : result.state === "unavailable" ? "特征服务不可用，已建立关键词索引" : null, result.fingerprint || null);
       } catch (error) {
         if (this.closed) return;
         if (current()) this.patch(job.assetId, "failed", error instanceof UserFacingError ? error.message : "原件索引未完成，可重试");

@@ -3,7 +3,7 @@
 import type { ToolUIPart } from "ai";
 import type { EvidenceRead, ProcessingAssetResult, VideoSourceIndex } from "@memory/contracts";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { FileText } from "lucide-react";
 import {
   Tool,
@@ -29,6 +29,7 @@ import {
   TerminalStatus,
 } from "@/components/ai-elements/terminal";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -46,9 +47,11 @@ const CodeBlock = dynamic(() =>
   import("@/components/ai-elements/code-block").then(
     (module) => module.CodeBlock,
   ),
+  { loading: () => <Skeleton className="h-8 w-full" /> },
 );
 
 const labels: Record<string, string> = {
+  tool_search: "查找工具",
   organize_memories: "整理生活活动",
   query_memory_activities: "查看生活活动",
   change_memory_activities: "核对生活活动",
@@ -84,9 +87,9 @@ const labels: Record<string, string> = {
   ask_user: "等待补充",
 };
 
-export function ToolActivity({ part }: { part: ToolUIPart }) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const [tab, setTab] = useState<string>();
+export const ToolActivity = memo(function ToolActivity({ part }: { part: ToolUIPart }) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState("output");
   const name = part.type.slice(5);
   const running =
     part.state === "input-streaming" || part.state === "input-available";
@@ -107,13 +110,13 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
   return (
     <Tool
       className="group/tool mb-0 overflow-hidden rounded-none border-0 bg-transparent"
-      open={open ?? (running || failed)}
+      open={open}
       onOpenChange={setOpen}
       data-testid="tool-activity"
       data-tool-state={running ? "running" : failed ? "error" : "complete"}
     >
       <ToolHeader
-        className="gap-2 px-0 py-3"
+        className="gap-2 px-0 py-2"
         type={part.type}
         state={part.state}
         title={
@@ -126,11 +129,14 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
             : "")
         }
       />
+      {failed && !open && <p role="alert" className="mb-2 line-clamp-2 text-sm text-muted-foreground" title={part.errorText}>
+        {part.errorText || "工具执行失败"}
+      </p>}
       <ToolContent>
         <Tabs
-          value={tab || (part.state === "input-streaming" ? "input" : "output")}
+          value={tab}
           onValueChange={setTab}
-          className="rounded-md border bg-muted/20 p-3"
+          className="pb-2 pl-6"
         >
           <TabsList
             variant="line"
@@ -141,7 +147,7 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
             <TabsTrigger value="input">参数</TabsTrigger>
           </TabsList>
           <TabsContent value="input" className="max-h-80 overflow-auto">
-            <ToolInput input={part.input ?? {}} className="p-0" />
+            <ToolInput input={part.input ?? {}} className="p-0 [&>h4]:sr-only" />
           </TabsContent>
           <TabsContent
             value="output"
@@ -149,11 +155,11 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
           >
             {running && part.output === undefined ? (
               <div role="status" className="py-2">
-                <Shimmer>执行中…</Shimmer>
+                <Shimmer>{part.state === "input-streaming" ? "正在准备参数" : "正在执行"}</Shimmer>
               </div>
             ) : (
               <ToolOutput
-                className="p-0"
+                className="p-0 [&>h4]:sr-only"
                 errorText={
                   failed ? part.errorText || "工具执行失败" : undefined
                 }
@@ -173,7 +179,7 @@ export function ToolActivity({ part }: { part: ToolUIPart }) {
       </ToolContent>
     </Tool>
   );
-}
+});
 
 function ToolResult({
   output,

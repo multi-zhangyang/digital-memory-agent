@@ -5,41 +5,14 @@ import { dirname, resolve } from "node:path";
 import { projectRoot } from "../config.js";
 import { UserFacingError } from "../harness/runtime.js";
 
-export interface FeatureInfo {
-  protocol: 1;
-  processorVersion: number;
-  fingerprint: string;
-  device: "cpu";
-  network: false;
-  encoders: Record<"text" | "image" | "face", { id: string; revision: string; dimensions: number }>;
-}
-export interface TextFeatures {
-  vectors: number[][];
-  truncated: boolean[];
-  tokens: number[];
-  fingerprint: string;
-}
-export interface ImageFeatures {
-  vector: number[];
-  faces: { region: { x: number; y: number; width: number; height: number }; detectionScore: number;
-    quality: "usable" | "small"; vector: number[] | null }[];
-  width: number;
-  height: number;
-  coordinateSpace: "exif-oriented";
-  metadata: { capturedLocal: string | null; offset: string | null; source: "EXIF" | null;
-    certainty: "unverified" | "unknown"; hasGps: boolean };
-  fingerprint: string;
-}
-export interface LocalFeatures {
-  info(signal?: AbortSignal): Promise<FeatureInfo>;
-  embed(texts: string[], role: "query" | "passage", encoder?: "text" | "image_text", signal?: AbortSignal): Promise<TextFeatures>;
-  image(data: Buffer, sha256: string, signal?: AbortSignal): Promise<ImageFeatures>;
-  close(): Promise<void>;
-}
+import { encoderFingerprint, type FeatureInfo, type ImageFeatures, type FeatureProcessor, type TextFeatures } from "./feature-provider.js";
+// Compatibility exports for existing integrations and evaluation scripts.
+export { encoderFingerprint, type FeatureInfo, type ImageFeatures, type TextFeatures } from "./feature-provider.js";
+export type LocalFeatures = FeatureProcessor;
 export interface LocalProcessorConfig { python: string; modelsDir: string }
 
 /** Fixed protocol, no arbitrary commands, file paths or credentials from the Agent. */
-export class LocalMemoryProcessor implements LocalFeatures {
+export class LocalMemoryProcessor implements FeatureProcessor {
   private process?: ChildProcessWithoutNullStreams;
   private infoPromise?: Promise<FeatureInfo>;
   private output = "";
@@ -59,7 +32,8 @@ export class LocalMemoryProcessor implements LocalFeatures {
     const child = spawn(this.config.python, ["-u", script, "--models", this.config.modelsDir], {
       cwd: dirname(script), stdio: ["pipe", "pipe", "pipe"],
       env: { PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8", PYTHONUTF8: "1",
-        OMP_NUM_THREADS: "2", TOKENIZERS_PARALLELISM: "false", HF_HUB_OFFLINE: "1" },
+        OMP_NUM_THREADS: "2", TOKENIZERS_PARALLELISM: "false", HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1",
+        HF_HUB_DISABLE_PROGRESS_BARS: "1", HF_HOME: resolve(this.config.modelsDir, ".cache") },
     });
     this.process = child;
     this.output = "";
@@ -116,20 +90,45 @@ export class LocalMemoryProcessor implements LocalFeatures {
   }
   info(signal?: AbortSignal): Promise<FeatureInfo> {
     this.infoPromise ||= this.request<FeatureInfo>({ action: "info" }, signal).then((info) => {
-      if (info.protocol !== 1 || !/^[a-f0-9]{64}$/.test(info.fingerprint) || info.encoders.text.dimensions !== 384 ||
-        info.encoders.image.dimensions !== 768 || info.encoders.face.dimensions !== 128) throw this.failure();
+      if (info.protocol !== 1 || !/^[a-f0-9]{64}$/.test(info.fingerprint) || info.network !== false ||
+        !["cpu", "cuda"].includes(info.device) || ["text", "image", "face"].some((channel) => {
+          const encoder = info.encoders?.[channel as "text" | "image" | "face"];
+          return !encoder || typeof encoder.id !== "string" || !Number.isInteger(encoder.dimensions) ||
+            encoder.dimensions < 1 || encoder.dimensions > 8192 ||
+            (encoder.fingerprint !== undefined && !/^[a-f0-9]{64}$/.test(encoder.fingerprint));
+        }) || (info.sharedQueryEmbedding && (info.encoders.text!.dimensions !== info.encoders.image!.dimensions ||
+          encoderFingerprint(info, "text") !== encoderFingerprint(info, "image")))) throw this.failure();
       return info;
     }).catch((error) => { this.infoPromise = undefined; throw error; });
     return this.infoPromise;
   }
   async embed(texts: string[], role: "query" | "passage", encoder: "text" | "image_text" = "text", signal?: AbortSignal) {
-    await this.info(signal);
-    return this.request<TextFeatures>({ action: "embed", texts, role, encoder }, signal);
+    const info = await this.info(signal);
+    const result = await this.request<TextFeatures>({ action: "embed", texts, role, encoder }, signal);
+    const dimensions = info.encoders[encoder === "text" ? "text" : "image"]!.dimensions;
+    if (result.fingerprint !== info.fingerprint || !Array.isArray(result.vectors) || result.vectors.length !== texts.length ||
+      result.vectors.some((v) => !this.validVector(v, dimensions)) || result.truncated?.length !== texts.length ||
+      result.tokens?.length !== texts.length) throw this.failure();
+    return result;
   }
   async image(data: Buffer, sha256: string, signal?: AbortSignal) {
     if (data.length > 20 * 1024 * 1024) throw new UserFacingError(413, "IMAGE_TOO_LARGE", "本地图片处理限 20 MB");
-    await this.info(signal);
-    return this.request<ImageFeatures>({ action: "image", data: data.toString("base64"), sha256 }, signal);
+    const info = await this.info(signal);
+    const result = await this.request<ImageFeatures>({ action: "image", data: data.toString("base64"), sha256 }, signal);
+    if (result.fingerprint !== info.fingerprint || !result.vector || !this.validVector(result.vector, info.encoders.image!.dimensions) ||
+      (result.faceFingerprint !== undefined && result.faceFingerprint !== encoderFingerprint(info, "face")) ||
+      result.coordinateSpace !== "exif-oriented" || !Array.isArray(result.faces) || result.faces.length > 256 ||
+      result.faces.some((face) => !face.region || !Object.values(face.region).every(Number.isFinite) ||
+        face.region.x < 0 || face.region.y < 0 || face.region.width <= 0 || face.region.height <= 0 ||
+        face.region.x + face.region.width > 1.000001 || face.region.y + face.region.height > 1.000001 ||
+        !["usable", "small"].includes(face.quality) || (face.vector !== null && !this.validVector(face.vector, info.encoders.face!.dimensions))))
+      throw this.failure();
+    if (result.facePolicy && [result.facePolicy.matchThreshold, result.facePolicy.matchMargin].some((n) => !Number.isFinite(n) || n < 0 || n > 1))
+      throw this.failure();
+    return result;
+  }
+  private validVector(vector: number[], dimensions: number) {
+    return Array.isArray(vector) && vector.length === dimensions && vector.every(Number.isFinite) && vector.some((n) => Math.abs(n) > 1e-8);
   }
   async close() { this.closed = true; this.stop(); }
 }

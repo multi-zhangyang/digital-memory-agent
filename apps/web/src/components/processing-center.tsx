@@ -63,8 +63,8 @@ export function ProcessingCenter({ onMemory, onAsset, onActivity, onDatasets, on
     catch (failure) { setError(failure instanceof Error ? failure.message : "操作失败"); }
     finally { setBusy(""); }
   }
-  return <div className="min-h-0 flex-1 overflow-y-auto px-6 py-10 sm:px-10" data-testid="processing-center">
-    <div className="mx-auto flex max-w-5xl flex-col gap-6">
+  return <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-8" data-testid="processing-center">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-medium">处理与核对</h1><Button variant="outline" size="sm" onClick={onSettings}>处理设置</Button></div>
       {error && <Alert><AlertTitle>{error}</AlertTitle></Alert>}
       <Tabs value={tab} onValueChange={setTab}>

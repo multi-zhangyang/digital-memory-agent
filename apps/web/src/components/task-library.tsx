@@ -76,9 +76,9 @@ export function TaskLibrary({
     );
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="task-library">
-      <div className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-10">
+      <div className="mx-auto w-full max-w-6xl px-6 py-8 sm:px-8">
         <div className="mb-8 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-medium tracking-tight">任务</h1>
+          <h1 className="text-2xl font-medium tracking-tight">全部对话</h1>
           <Button size="sm" onClick={onNew}>
             <Plus className="size-4" />
             创建任务

@@ -20,7 +20,39 @@ const server = createServer(async (request, response) => {
   const buffers = [];
   for await (const chunk of request) buffers.push(chunk);
   const body = JSON.parse(Buffer.concat(buffers).toString() || "{}");
+  if (request.url === "/v1/embeddings") {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ data: body.input.map((_, index) => ({ index, embedding: [1, 0, 0, 0, 0] })) }));
+    return;
+  }
+  if (request.url === "/features") {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    const result = body.action === "info" ? { protocol: 1, capabilities: ["text", "image", "face"], revision: "test-v1", dimensions: 5 }
+      : body.action === "embed" ? { revision: "test-v1", vectors: body.texts.map(() => [1, 0, 0, 0, 0]), truncated: body.texts.map(() => false), tokens: body.texts.map(() => 1) }
+        : body.capability === "face" ? { revision: "test-v1", coordinateSpace: "exif-oriented", faces: [] }
+          : { revision: "test-v1", vector: [1, 0, 0, 0, 0] };
+    response.end(JSON.stringify(result));
+    return;
+  }
   const messages = body.messages || [];
+  // Follow the advertised protocol: discover a deferred definition before calling it.
+  const advertised = new Set((body.tools || []).map((tool) => tool.function?.name));
+  const declaredDelta = (delta) => !delta.tool_calls || !advertised.has("tool_search") ? delta : {
+    ...delta, tool_calls: delta.tool_calls.map((call) => advertised.has(call.function.name) ? call : {
+      ...call, function: { name: "tool_search", arguments: JSON.stringify({ query: call.function.name, limit: 1 }) },
+    }),
+  };
+  const discoveryIds = new Set(messages.flatMap((message) => (message.tool_calls || [])
+    .filter((call) => call.function.name === "tool_search").map((call) => call.id)));
+
+  if (!body.tools?.length && messages.some((message) => ["system", "developer"].includes(message.role) &&
+    (typeof message.content === "string" ? message.content : (message.content || []).map((part) => part.text || "").join("")).includes("context summarization assistant"))) {
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "compaction-fixture", object: "chat.completion.chunk", created: 1,
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 1000, completion_tokens: 80, total_tokens: 1080 } }) + "\n\n";
+    response.end(frame({ content: "用户正在整理咖啡活动；保留活动引用，继续处理补充资料。" }, null) + frame({}, "stop") + "data: [DONE]\n\n");
+    return;
+  }
   let userIndex = messages.findLastIndex(
     (message) => message.role === "user",
   );
@@ -50,7 +82,7 @@ const server = createServer(async (request, response) => {
     }));
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "activity-fixture", object: "chat.completion.chunk", created: 1,
-      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } }) + "\n\n";
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } }) + "\n\n";
     response.end(frame({ tool_calls: [{ index: 0, id: randomUUID(), type: "function", function: { name: "submit_activities", arguments: JSON.stringify({ activities }) } }] }, null)
       + frame({}, "tool_calls") + "data: [DONE]\n\n"); return;
   }
@@ -67,7 +99,7 @@ const server = createServer(async (request, response) => {
     }));
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "source-answer-browser-fixture", object: "chat.completion.chunk", created: 1,
-      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 180, completion_tokens: 100, total_tokens: 280 } }) + "\n\n";
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 180, completion_tokens: 100, total_tokens: 280 } }) + "\n\n";
     response.end(frame({ tool_calls: [{ index: 0, id: "source-answer-browser", type: "function", function: { name: "submit_dataset_answers", arguments: JSON.stringify({ answers }) } }] }, null)
       + frame({}, "tool_calls") + "data: [DONE]\n\n"); return;
   }
@@ -85,7 +117,7 @@ const server = createServer(async (request, response) => {
     if (response.destroyed) return;
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "audit-browser-fixture", object: "chat.completion.chunk", created: 1,
-      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 240, completion_tokens: 140, total_tokens: 380 } }) + "\n\n";
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 240, completion_tokens: 140, total_tokens: 380 } }) + "\n\n";
     response.end(frame({ tool_calls: [{ index: 0, id: "audit-browser", type: "function", function: { name: "submit_dataset_review", arguments: JSON.stringify({ decisions }) } }] }, null)
       + frame({}, "tool_calls") + "data: [DONE]\n\n"); return;
   }
@@ -109,7 +141,7 @@ const server = createServer(async (request, response) => {
     if (response.destroyed) return;
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "dataset-browser-fixture", object: "chat.completion.chunk", created: 1,
-      model: "browser-test", choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 120, total_tokens: 320 } }) + "\n\n";
+      model: "browser-test", choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 120, total_tokens: 320 } }) + "\n\n";
     response.end(frame({ tool_calls: [{ index: 0, id: "dataset-browser", type: "function", function: { name: "submit_dataset_questions", arguments: JSON.stringify(questions) } }] }, null)
       + frame({}, "tool_calls") + "data: [DONE]\n\n");
     return;
@@ -130,7 +162,7 @@ const server = createServer(async (request, response) => {
     else await new Promise((resolve) => setTimeout(resolve, 500));
     if (response.destroyed) return;
     response.writeHead(200, { "Content-Type": "text/event-stream" });
-    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "photo-browser-fixture", object: "chat.completion.chunk", created: 1, model: "browser-test", choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } }) + "\n\n";
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "photo-browser-fixture", object: "chat.completion.chunk", created: 1, model: "browser-test", choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 } }) + "\n\n";
     response.end(frame({ tool_calls: [{ index: 0, id: "photo-browser", type: "function", function: { name: "extract_photo_memories", arguments: JSON.stringify({ entries }) } }] }, null) + frame({}, "tool_calls") + "data: [DONE]\n\n");
     return;
   }
@@ -146,7 +178,7 @@ const server = createServer(async (request, response) => {
     await new Promise((resolve) => setTimeout(resolve, 450));
     if (response.destroyed) return;
     response.writeHead(200, { "Content-Type": "text/event-stream" });
-    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "capture-browser-fixture", object: "chat.completion.chunk", created: 1, model: "browser-test", choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 220, completion_tokens: 100, total_tokens: 320 } }) + "\n\n";
+    const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "capture-browser-fixture", object: "chat.completion.chunk", created: 1, model: "browser-test", choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 220, completion_tokens: 100, total_tokens: 320 } }) + "\n\n";
     response.end(frame({ tool_calls: [{ index: 0, id: "capture-browser", type: "function", function: { name: "capture_memories", arguments: JSON.stringify({ entries }) } }] }, null) + frame({}, "tool_calls") + "data: [DONE]\n\n");
     return;
   }
@@ -226,7 +258,7 @@ const server = createServer(async (request, response) => {
         object: "chat.completion.chunk",
         created: 1,
         model: "browser-test",
-        choices: [{ index: 0, delta, finish_reason }],
+        choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }],
         usage: {
           prompt_tokens: 240,
           completion_tokens: 120,
@@ -265,7 +297,7 @@ const server = createServer(async (request, response) => {
         ? "已按来源整理生活活动。请核对活动卡片中的内容与疑点。" : "已提交整理，正在等待后台处理结果。" };
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (delta, finish_reason) => "data: " + JSON.stringify({ id: "living-chat-fixture", object: "chat.completion.chunk", created: 1,
-      model: body.model, choices: [{ index: 0, delta, finish_reason }], usage: { prompt_tokens: 300, completion_tokens: 120, total_tokens: 420 } }) + "\n\n";
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }], usage: { prompt_tokens: 300, completion_tokens: 120, total_tokens: 420 } }) + "\n\n";
     response.end(frame(delta, null) + frame({}, delta.tool_calls ? "tool_calls" : "stop") + "data: [DONE]\n\n"); return;
   }
   if (body.model === "media-review-browser-test" || body.model === "video-browser-test") {
@@ -287,7 +319,7 @@ const server = createServer(async (request, response) => {
       }) } }] };
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (value, finish_reason) => "data: " + JSON.stringify({ id: "media-review-browser", object: "chat.completion.chunk", created: 1,
-      model: body.model, choices: [{ index: 0, delta: value, finish_reason }], usage: { prompt_tokens: 250, completion_tokens: 100, total_tokens: 350 } }) + "\n\n";
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(value), finish_reason }], usage: { prompt_tokens: 250, completion_tokens: 100, total_tokens: 350 } }) + "\n\n";
     response.end(frame(delta, null) + frame({}, delta.tool_calls ? "tool_calls" : "stop") + "data: [DONE]\n\n");
     return;
   }
@@ -328,7 +360,7 @@ const server = createServer(async (request, response) => {
     else delta = invoke("process_assets", {});
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (value, finish_reason) => "data: " + JSON.stringify({ id: "agent-first-browser", object: "chat.completion.chunk", created: 1,
-      model: body.model, choices: [{ index: 0, delta: value, finish_reason }], usage: { prompt_tokens: 250, completion_tokens: 100, total_tokens: 350 } }) + "\n\n";
+      model: body.model, choices: [{ index: 0, delta: declaredDelta(value), finish_reason }], usage: { prompt_tokens: 250, completion_tokens: 100, total_tokens: 350 } }) + "\n\n";
     response.end(frame(delta, null) + frame({}, delta.tool_calls ? "tool_calls" : "stop") + "data: [DONE]\n\n");
     return;
   }
@@ -339,7 +371,7 @@ const server = createServer(async (request, response) => {
       : { tool_calls: [{ index: 0, id: "background-process", type: "function", function: { name: "process_assets", arguments: "{}" } }] };
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const frame = (value, finish_reason) => "data: " + JSON.stringify({ id: "background-browser", object: "chat.completion.chunk", created: 1,
-      model: "background-browser-test", choices: [{ index: 0, delta: value, finish_reason }], usage: { prompt_tokens: 180, completion_tokens: 80, total_tokens: 260 } }) + "\n\n";
+      model: "background-browser-test", choices: [{ index: 0, delta: declaredDelta(value), finish_reason }], usage: { prompt_tokens: 180, completion_tokens: 80, total_tokens: 260 } }) + "\n\n";
     response.end(frame(delta, null) + frame({}, submitted ? "stop" : "tool_calls") + "data: [DONE]\n\n");
     return;
   }
@@ -352,7 +384,7 @@ const server = createServer(async (request, response) => {
   }
   const results = messages
     .slice(userIndex + 1)
-    .filter((message) => message.role === "tool")
+    .filter((message) => message.role === "tool" && !discoveryIds.has(message.tool_call_id))
     .map((message) => {
       try {
         return JSON.parse(
@@ -365,7 +397,9 @@ const server = createServer(async (request, response) => {
       }
     });
   const asset = results.find((result) => result.assets)?.assets[0];
-  const calls = prompt.includes("通用任务测试")
+  const calls = prompt.includes("工具连续显示测试")
+    ? [["bash", { command: "printf START; sleep 4; printf END", timeout: 20 }]]
+    : prompt.includes("通用任务测试")
     ? [
         ["read", { path: "input.csv" }],
         [
@@ -486,16 +520,18 @@ const server = createServer(async (request, response) => {
             object: "chat.completion.chunk",
             created: 1,
             model: "browser-test",
-            choices: [{ index: 0, delta, finish_reason }],
+            choices: [{ index: 0, delta: declaredDelta(delta), finish_reason }],
             ...(usage ? { usage } : {}),
           }) +
           "\n\n",
       );
   };
   await new Promise((resolve) =>
-    setTimeout(resolve, prompt.includes("等待测试") ? 1600 : call ? 180 : 50),
+    setTimeout(resolve, prompt.includes("等待测试") || prompt.includes("工具连续显示测试") ? 1600 : call ? 180 : 50),
   );
   if (prompt.includes("流式体验测试")) {
+    write({ reasoning_content: "正在检查测试片段。" });
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     for (let index = 1; index <= 100 && !response.destroyed; index++) {
       write({ content: `片段 ${String(index).padStart(3, "0")}，` });
       await new Promise((resolve) => setTimeout(resolve, prompt.includes("队列撤回") ? 100 : 35));
@@ -511,7 +547,7 @@ const server = createServer(async (request, response) => {
       tool_calls: [
         {
           index: 0,
-          id: "call_" + results.length,
+          id: randomUUID(),
           type: "function",
           function: { name: call[0], arguments: JSON.stringify(call[1]) },
         },

@@ -2,6 +2,75 @@
 
 这组固定材料用于检查精确编号、相近事件、纠正、日期、人物歧义、图像检索和视觉描述，不代表用户经历或个人参数记忆。开发题与保留题分别报告，修正固定后才运行保留题；如果保留题后来用于诊断或调参，后续结果必须改记为开发回归，不能继续称为独立保留评测。
 
+以下模型和固定清单仅用于可复现评测，不是产品默认配置。实际使用在设置页接入用户自己的服务，见[特征服务说明](../../docs/local-memory-processing.md)。
+
+## E5＋SigLIP2 与 EmbeddingGemma 2 对照
+
+使用已校验的 `retrieval.json`、`images.json` 和 `.data/quality-fixtures/`，直接比较真实编码器的排名。所有题搜索全部候选，包含修正后的正文；这是编码器回归，不应用产品的关键词、时间、人物过滤，也不验证回答或人脸。历史保留题已可见，不再作为盲评。完整配置、实测和限制见[统一嵌入评估](../../docs/plans/0035-unified-embedding-evaluation.md)。
+
+候选的固定版本为 `google/embeddinggemma-2@914f7f89142e33e77833254d9c9b90c3cef7303b`，仅加载文字与视觉，使用 768 维向量和官方检索提示。独立 CPU 环境不修改现有 worker：
+
+```bash
+UV_PROJECT_ENVIRONMENT="$PWD/.data/memory-worker/embeddinggemma2-eval-venv" uv sync --project examples/quality/embedding-environment --frozen
+python3 examples/quality/download-embeddinggemma2.py --destination .data/memory-worker/embeddinggemma2-eval/model
+
+.data/memory-worker/venv/bin/python examples/quality/evaluate-embedding-backends.py --backend legacy --device cpu --models .data/memory-worker/models
+.data/memory-worker/embeddinggemma2-eval-venv/bin/python examples/quality/evaluate-embedding-backends.py --backend embeddinggemma2 --device cpu --models .data/memory-worker/embeddinggemma2-eval/model
+```
+
+只有下载步骤联网获取公共权重；运行时仅加载本地模型与固定样例。每次生成独立的 `.data/evaluations/embedding-*` 目录，保存 `report.json` 与 `vectors.npz`。候选同时报告文字、图像和同一个查询空间下的混合检索。命中率分母排除无答案和身份歧义题；查询耗时包含分词、编码与归一化，不含数据库检索。图像计时不含人脸推理。模型与图片的原件、向量和运行输出不进入 Git。
+
+安装 FFmpeg 并准备 `examples/videos/download.py` 的固定公开视频后，给任一评测命令添加 `--video-only`，可单独检查两段视频的六个抽样帧。四个中文场景问题在 `embedding-video-queries.json` 中固定；报告保存帧与来源摘要，不评估完整视频的动作或音频理解。
+
+GPU 对照使用单独的 Linux x86_64 / CUDA 12.8 环境，适配本机已有驱动。CPU 与 GPU 依赖各自锁定，运行时报告实际版本与精度：
+
+```bash
+UV_PROJECT_ENVIRONMENT="$PWD/.data/memory-worker/embeddinggemma2-gpu-venv" uv sync --project examples/quality/embedding-gpu-environment --frozen
+.data/memory-worker/embeddinggemma2-gpu-venv/bin/python examples/quality/evaluate-embedding-backends.py --backend embeddinggemma2 --device cuda --models .data/memory-worker/embeddinggemma2-eval/model
+```
+
+GPU 锁文件中的 PyTorch wheel 使用同一官方站点的 `download.pytorch.org` 下载地址，内容摘要与上游锁定文件一致；本机访问其 `download-r2.pytorch.org` 地址曾返回 403。GPU 实测状态与资源占用以阶段报告为准。
+
+## 人脸 GPU 替换评估
+
+`evaluate-face-backends.py` 比较旧版 worker 的 YuNet/SFace CPU 路径与
+SCRFD-2.5GF / SCRFD-10GF＋同一 ArcFace R50。权重、官方推理适配代码及许可
+固定在 `face-models.json`，仅下载到忽略目录。GPU 环境固定 ONNX Runtime
+1.24.4 与 CUDA 12 库，避免自动选择要求更新驱动的 CUDA 13 版本。
+
+```bash
+python3 examples/quality/download-face-models.py
+UV_PROJECT_ENVIRONMENT="$PWD/.data/memory-worker/face-gpu-venv" uv sync --project examples/quality/face-gpu-environment --frozen
+.data/memory-worker/venv/bin/python examples/quality/evaluate-face-backends.py --backend legacy --device cpu
+.data/memory-worker/face-gpu-venv/bin/python examples/quality/evaluate-face-backends.py --backend scrfd-2.5g --device cuda
+.data/memory-worker/face-gpu-venv/bin/python examples/quality/evaluate-face-backends.py --backend scrfd-10g --device cuda
+```
+
+评测实际使用已下载的 18 张公开照片。另对 8 张肖像执行固定缩小至最长边
+160 像素、亮度乘 0.25、两者组合的压力测试；这些是原图的派生版本，
+不能视为独立困难场景。两个候选使用同一检测阈值 0.5、NMS 0.4、640 输入，
+均保留最大边 1600、最小可用脸 32 像素及最多 32 脸的业务约束。
+
+GPU 初始化失败会报错；预热期间记录实际计算节点的 execution provider，
+结束 profiling 后才计时。耗时含缩放、检测、对齐及特征提取，不含图片解码和
+模型加载。显存为定时采样的整卡占用，不等于精确的单进程瞬时峰值。
+同人/异人评分使用匿名参考组，不向模型提供人物姓名或来源说明。
+候选匹配阈值只由原开发配对确定，历史保留题仅作回归；这个小样本阈值不能
+直接进入正式人物关联规则。压力测试的匹配图库排除同一张来源照片，
+按不同人物计算次优差值，不把原图和它的缩小版本当作跨照片识别成功。
+
+准备好上一节的 EmbeddingGemma 2 GPU 环境后，可检查两个候选系统同时驻留：
+
+```bash
+.data/memory-worker/embeddinggemma2-gpu-venv/bin/python examples/quality/evaluate-gpu-co-residency.py
+```
+
+该检查在两个进程中保留 GPU 模型，交替执行图片编码与人脸处理；它验证小批量
+串行任务的显存可行性，不等于并发服务压测。正式 worker、资料库和人物确认
+不被这些脚本修改。实测结果及正式迁移条件见[阶段三十六](../../docs/plans/0036-face-gpu-evaluation.md)。
+
+## 原有工具质量评测
+
 `retrieval.json` 包含 41 条虚构记录、20 道开发题和 12 道保留题。确认状态仅为测试设定；查询证据关联当前记忆版本及原文范围。未知问题检查回答是否有依据，不要求向量检索返回空结果。
 
 `images.json` 固定 18 张公开照片：8 张物体照片、8 张独立肖像和两张合影。每张记录来源页、原件地址、作者、许可、字节数、SHA-256、尺寸与变换说明；署名及许可应按清单随材料保留。肖像只使用匿名参考组 `a`—`d` 评分，合影不提供位置到姓名的标签。不同肖像的服装、姿态和环境经过原图核对，不把裁切或颜色变换算作更多独立拍摄。

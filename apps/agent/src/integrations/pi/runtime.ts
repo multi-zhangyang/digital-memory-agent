@@ -221,6 +221,7 @@ export class PiRuntime implements AgentRuntime {
             resources.ui.setStatus("extension", "扩展运行失败，请检查配置");
           },
         });
+        session.setActiveToolsByName([...session.getActiveToolNames(), "tool_search"]);
         return session;
       })();
       this.sessions.set(id, pending);
@@ -337,6 +338,13 @@ export class PiRuntime implements AgentRuntime {
     try {
       const session = await this.getSession(id, modelId);
       if (this.cancelled.has(id)) return;
+      // Start a new user task with the core loadout. Background continuations,
+      // approvals and recovery keep the tools already discovered on this branch.
+      if (!options?.recovery && !options?.notification)
+        session.setActiveToolsByName(session.getAllTools()
+          .filter((tool) => tool.sourceInfo.source !== "builtin" &&
+            (tool.exposure === "direct" || tool.exposure === "model-only"))
+          .map((tool) => tool.name));
       this.refreshPolicyContext(session, id, options);
       const provider = this.config.providers.find(
         (item) => item.model.id === modelId,
@@ -494,7 +502,7 @@ export class PiRuntime implements AgentRuntime {
     const session = await this.getSession(id, modelId);
     const skills = session.resourceLoader.getSkills().skills.map((s) => s.name);
     const prompts = session.resourceLoader.getPrompts().prompts.map((p) => p.name);
-    const tools = session.getAllTools();
+    const tools = session.getAllTools().filter((tool) => tool.sourceInfo.source !== "builtin");
     const resources = this.host.resourceStates?.(id) || [];
     for (const [kind, names] of [["skill", skills], ["prompt", prompts]] as const) for (const name of names) {
       const resource = resources.find((item) => item.kind === kind && item.name === name);
@@ -559,12 +567,12 @@ export class PiRuntime implements AgentRuntime {
     } catch (e) {
       if (
         e instanceof Error &&
-        /nothing to compact|not enough/i.test(e.message)
+        /nothing to compact|not enough|already compacted/i.test(e.message)
       )
         throw new UserFacingError(
           409,
           "NOTHING_TO_COMPACT",
-          "当前会话较短，暂时没有需要压缩的内容",
+          /already compacted/i.test(e.message) ? "当前上下文已压缩，尚无新增内容需要压缩" : "当前会话较短，暂时没有需要压缩的内容",
         );
       throw new UserFacingError(
         502,

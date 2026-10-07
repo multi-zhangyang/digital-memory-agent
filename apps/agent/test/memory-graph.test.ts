@@ -31,6 +31,17 @@ const features: ImageFeatures = { fingerprint: "1".repeat(64), width: 100, heigh
   faces: [{ region: { x: 0.1, y: 0.1, width: 0.5, height: 0.5 }, detectionScore: 0.99, quality: "usable", vector: Array.from({ length: 128 }, (_, index) => Number(index === 0)) }] };
 
 describe("versioned observations, identities and complete events", () => {
+  it("keeps face observations and existing links when only the semantic model changes", () => {
+    const { store, graph } = setup(), asset = image(store);
+    const first = graph.recordImage(asset, { ...features, faceFingerprint: "face-model" }, () => [])[0];
+    const person = store.work.memory.savePerson({ name: "确认人物", aliases: [] });
+    graph.identify(first.entityId, 1, person.id!, "用户确认");
+    const links = store.db.prepare("SELECT * FROM memory_entity_links ORDER BY id").all();
+    const next = graph.recordImage(asset, { ...features, fingerprint: "new-text-model", faceFingerprint: "face-model" }, () => [])[0];
+    expect(next.observationId).toBe(first.observationId);
+    expect(store.db.prepare("SELECT * FROM memory_entity_links ORDER BY id").all()).toEqual(links);
+  });
+
   it("preserves original observation IDs/output when a claim is corrected, including restart", () => {
     const { store, memory, graph } = setup();
     const asset = image(store);

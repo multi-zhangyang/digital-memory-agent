@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import type { ChatPart, Run } from "@memory/contracts";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
@@ -33,8 +33,9 @@ export function transcriptGroups(parts: ChatPart[]): Group[] {
 }
 
 const TimelinePart = memo(function TimelinePart({ part, streaming, children }: { part: ChatPart; streaming: boolean; children?: ReactNode }) {
-  if (part.type === "text") return part.text ? <Markdown content={part.text} /> : null;
-  if (part.type === "reasoning") return part.text ? <Reasoning isStreaming={streaming} defaultOpen={false}>
+  const tool = useMemo(() => part.type === "tool" ? toolUI(part) : null, [part]);
+  if (part.type === "text") return part.text ? <Markdown content={part.text} streaming={streaming} /> : null;
+  if (part.type === "reasoning") return part.text ? <Reasoning className="mb-0" isStreaming={streaming} defaultOpen={false}>
     <ReasoningTrigger getThinkingMessage={(active) => active ? "思考中" : "思考过程"} />
     <ReasoningContent>{part.text}</ReasoningContent>
   </Reasoning> : null;
@@ -42,14 +43,16 @@ const TimelinePart = memo(function TimelinePart({ part, streaming, children }: {
     <CheckpointIcon /><CheckpointTrigger disabled>{part.text}</CheckpointTrigger>
   </Checkpoint>;
   if (part.type === "tool") return <div className="flex min-w-0 flex-col gap-2" data-tool-call-id={part.toolCallId}>
-    <ToolActivity part={toolUI(part)} />{children}
+    <ToolActivity part={tool!} />{children}
   </div>;
   return null;
 });
 
 export const ExecutionTimeline = memo(function ExecutionTimeline({ run, activeEntryIds }: { run: Run; activeEntryIds?: string[] }) {
   const branch = activeEntryIds && new Set(activeEntryIds);
-  const groups = transcriptGroups(run.parts).filter((group) => !branch || !group.marker?.entryId || branch.has(group.marker.entryId));
+  const groups = transcriptGroups(run.parts).filter((group) =>
+    (!branch || !group.marker?.entryId || branch.has(group.marker.entryId)) &&
+    (group.marker?.text || group.parts.some((part) => part.type !== "text" && part.type !== "reasoning" || part.text)));
   const active = isActive(run);
   const tools = groups.flatMap((group) => group.parts.filter((part): part is Extract<ChatPart, { type: "tool" }> => part.type === "tool"));
   const toolIds = new Set(tools.map((part) => part.toolCallId));
@@ -67,12 +70,12 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({ run, activeEn
       </>}
     </TimelinePart>;
   };
-  return <div className="flex min-w-0 flex-col gap-6" data-testid="execution-timeline">
-    {groups.map((group) => <Message key={group.id} from={group.role} className="max-w-full" data-message-id={group.id}>
-      <MessageContent className="flex w-full min-w-0 flex-col gap-4 text-base leading-7">
+  return <div className="flex min-w-0 flex-col gap-4" data-testid="execution-timeline">
+    {groups.map((group) => <Message key={group.id} from={group.role} className={active ? "max-w-full motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150" : "max-w-full"} data-message-id={group.id}>
+      <MessageContent className="flex w-full min-w-0 flex-col gap-2 text-base leading-7">
         {group.role === "user" && group.marker?.text && <p className="whitespace-pre-wrap">{group.marker.text}</p>}
         {group.parts.filter((part) => part.type !== "tool" || !part.parentToolCallId || !toolIds.has(part.parentToolCallId)).map((part, index) =>
-          renderPart(part, index, active && group.marker?.state === "streaming" && part === group.parts.at(-1)))}
+          renderPart(part, index, active && (group.marker ? group.marker.state === "streaming" : group === groups.at(-1)) && part === group.parts.at(-1)))}
       </MessageContent>
     </Message>)}
   </div>;

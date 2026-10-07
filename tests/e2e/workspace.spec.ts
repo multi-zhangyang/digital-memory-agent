@@ -152,6 +152,7 @@ test("model configuration and tool access are editable and restored without echo
   await expect(form.getByRole("status")).toContainText("已连接");
   await expect(form.getByLabel("API key", { exact: true })).toHaveValue("");
   await page.reload();
+  await form.getByRole("button", { name: "模型参数" }).click();
   await expect(form.getByRole("combobox", { name: "思考强度" })).toContainText(
     "max",
   );

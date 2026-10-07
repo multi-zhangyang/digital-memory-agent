@@ -28,7 +28,13 @@ export interface ActivityExtractionInput {
   requiredRefs: string[];
   existing: { id: string; title: string; members: string[]; locked: boolean }[];
   separated: [string, string][];
+  context?: ActivityTaskContext & { observationRefs: string[] };
   validationFeedback?: { reason: string; previous: ActivityProposal[] };
+}
+export interface ActivityTaskContext {
+  messages: { id: string; text: string; question?: string }[];
+  referenceTime: string;
+  timeZone: string;
 }
 export interface ActivityProposal extends Pick<MemoryActivity, "title" | "summary" | "occurredAt" | "place" | "issues" | "reason"> {
   members: string[];
@@ -38,15 +44,15 @@ export interface ActivityExtractionResult {
   usage?: { input: number; output: number };
 }
 
-// An unlocated visual observation has no cross-source event identity. Shared
-// originals can still connect regions/frames; an explicit linked observation
-// must carry its supporting originals or confirmed date/place.
-export function unlinkedVisualPairs(observations: ActivityObservation[]): [string, string][] {
+// Without task explanations, unlocated visual observations only connect through
+// shared originals. Explanations apply solely to the current source selection.
+export function unlinkedVisualPairs(observations: ActivityObservation[], contextRefs: readonly string[] = []): [string, string][] {
   const pairs: [string, string][] = [];
   const unlocated = (o: ActivityObservation) => !o.occurredAt && !o.place && o.sources.length > 0 &&
     o.sources.every((source) => source.kind === "image" || source.kind === "video");
   for (let i = 0; i < observations.length; i++) for (let j = i + 1; j < observations.length; j++) {
     const a = observations[i], b = observations[j];
+    if (contextRefs.includes(a.ref) && contextRefs.includes(b.ref)) continue;
     if ((unlocated(a) || unlocated(b)) && !a.sources.some((source) => b.sources.some((other) => source.ref === other.ref)))
       pairs.push([a.ref, b.ref]);
   }
@@ -58,7 +64,8 @@ export function validateActivities(input: ActivityExtractionInput, result: Activ
   const used = new Set<string>();
   const invalid = (reason: string): never => { throw new UserFacingError(422, "ACTIVITY_INVALID", `活动归组校验未通过：${reason}`); };
   if (!Array.isArray(result.activities) || result.activities.length > input.requiredRefs.length) invalid("活动数量不能多于 requiredRefs 数量");
-  const unlinked = unlinkedVisualPairs(input.observations);
+  const contextRefs = input.context?.messages.some((m) => m.text.trim()) ? input.context.observationRefs : [];
+  const unlinked = unlinkedVisualPairs(input.observations, contextRefs);
   for (const activity of result.activities) {
     if (!activity.title?.trim() || activity.title.length > 120 || !activity.summary?.trim() || activity.summary.length > 2000 ||
       !activity.reason?.trim() || activity.reason.length > 800 || typeof activity.place !== "string" || activity.place.length > 120 ||
@@ -78,7 +85,10 @@ export function validateActivities(input: ActivityExtractionInput, result: Activ
     const dates = new Set(activity.members.map((ref) => observations.get(ref)!.occurredAt).filter(Boolean));
     // A concrete activity cannot be joined on people/place alone across conflicting known dates.
     if (dates.size > 1) invalid(`成员 ${activity.members.join(", ")} 含有不同已知日期，必须分开`);
-    if (activity.occurredAt && (!/^\d{4}-\d{2}-\d{2}$/.test(activity.occurredAt) || !dates.has(activity.occurredAt))) invalid("活动日期必须来自本组观察的已知日期，未知时留空");
+    const contextualDate = dates.size === 0 && activity.members.every((ref) => contextRefs.includes(ref));
+    if (activity.occurredAt && (!/^\d{4}-\d{2}-\d{2}$/.test(activity.occurredAt) || !Number.isFinite(Date.parse(activity.occurredAt)) ||
+      new Date(activity.occurredAt).toISOString().slice(0, 10) !== activity.occurredAt || (!dates.has(activity.occurredAt) && !contextualDate)))
+      invalid("活动日期必须来自观察或本次用户说明，未知时留空");
   }
   const missing = input.requiredRefs.filter((ref) => !used.has(ref));
   if (missing.length) invalid(`遗漏 requiredRefs：${missing.join(", ")}；没有可靠关联的观察也须单独归组`);

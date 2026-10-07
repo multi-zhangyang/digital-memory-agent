@@ -1,36 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionNode, SessionState } from "@memory/contracts";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Context, ContextContent, ContextContentHeader, ContextTrigger } from "@/components/ai-elements/context";
-import { GitBranch, LoaderCircle, CornerDownRight, Scissors, RefreshCw } from "lucide-react";
+import { GitBranch, LoaderCircle, CornerDownRight, Scissors, RefreshCw, Wrench } from "lucide-react";
 
 const roleLabel = (node: SessionNode) => node.kind === "compaction" ? "上下文压缩" : node.kind === "branch_summary" ? "分支摘要"
   : node.role === "assistant" ? "Agent" : node.role === "user" ? "你" : node.role === "toolResult" ? "工具结果" : "系统";
 
-export function SessionControls({ conversationId, busy, revision, onNavigate, onFork }: {
+export function SessionControls({ conversationId, busy, revision, onNavigate, onFork, onCompact, onUseResource }: {
   conversationId: string; busy: boolean; revision?: string;
   onNavigate: (editorText?: string) => Promise<void>;
   onFork: (entryId: string) => Promise<void>;
+  onCompact: (instructions?: string) => Promise<void>;
+  onUseResource: (command: string) => void;
 }) {
   const [open, setOpen] = useState(false), [state, setState] = useState<SessionState>(), [selected, setSelected] = useState("");
   const [working, setWorking] = useState(false), [error, setError] = useState(""), [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [tab, setTab] = useState("tree"), [instructions, setInstructions] = useState("");
+  const [notice, setNotice] = useState("");
+  const version = `${conversationId}:${revision}:${busy}`;
+  const loadedVersion = useRef("");
   const load = useCallback(async () => {
     try {
       const next = await api<SessionState>("/conversations/" + conversationId + "/session");
-      setState(next); setError("");
+      setState(next); setLoadError("");
+      loadedVersion.current = version;
       setSelected((previous) => next.nodes.some((node) => node.id === previous) ? previous
         : next.nodes.find((node) => node.id === next.leafId)?.id || next.nodes.filter((node) => node.active).at(-1)?.id || "");
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "读取会话失败"); }
-  }, [conversationId]);
-  useEffect(() => { if (open) void load(); }, [load, revision, open]);
+    } catch (failure) { setLoadError(failure instanceof Error ? failure.message : "读取会话失败"); }
+  }, [conversationId, version]);
+  useEffect(() => { if (open || loadedVersion.current !== version) void load(); }, [load, version, open]);
   useEffect(() => {
     if (!open) return;
     const timer = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000);
@@ -49,24 +60,35 @@ export function SessionControls({ conversationId, busy, revision, onNavigate, on
     return result;
   }, [state?.nodes]);
   const node = state?.nodes.find((item) => item.id === selected);
+  const lastCompaction = state?.nodes.filter((item) => item.kind === "compaction" && item.active).at(-1);
   async function act(action: "navigate" | "fork" | "compact") {
-    setWorking(true); setError("");
+    setWorking(true); setError(""); setNotice("");
     try {
       if (action === "fork") { await onFork(selected); setOpen(false); }
       else if (action === "navigate") {
         const result = await api<{ editorText?: string; cancelled?: boolean; aborted?: boolean }>("/conversations/" + conversationId + "/navigate",
           { method: "POST", body: JSON.stringify({ entryId: selected }) });
         if (!result.cancelled && !result.aborted) { await onNavigate(result.editorText); await load(); setOpen(false); }
-      } else { await api("/conversations/" + conversationId + "/compact", { method: "POST", body: "{}" }); await load(); }
+      } else { await onCompact(instructions.trim() || undefined); await load(); setNotice("上下文已压缩"); }
     } catch (failure) { setError(failure instanceof Error ? failure.message : "操作失败"); }
     finally { setWorking(false); }
   }
   return <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="会话与能力"><GitBranch className="size-4" /></Button></DialogTrigger>
+    <div className="flex items-center gap-1">
+      {state?.context?.tokens != null && <div className="hidden sm:block"><Context usedTokens={state.context.tokens} maxTokens={state.context.contextWindow}>
+        <ContextTrigger aria-label="会话上下文用量" size="sm" /><ContextContent><ContextContentHeader /></ContextContent>
+      </Context></div>}
+      <Button variant="ghost" size="sm" aria-label="压缩上下文" title="压缩上下文" disabled={busy || working || !nodes.length} onClick={() => {
+        setTab("context"); setOpen(true); void act("compact");
+      }}><Scissors data-icon="inline-start" /><span className="hidden lg:inline">压缩</span></Button>
+      <DialogTrigger asChild><Button size="sm" variant="ghost" aria-label="会话与能力" title="会话树与分支" onClick={() => setTab("tree")}><GitBranch data-icon="inline-start" /><span className="hidden lg:inline">会话</span></Button></DialogTrigger>
+      <Button aria-label="工具与扩展" title="工具与扩展" size="sm" variant="ghost" onClick={() => { setTab("capabilities"); setOpen(true); }}><Wrench data-icon="inline-start" /><span className="hidden xl:inline">工具与扩展</span></Button>
+    </div>
     <DialogContent className="flex h-[min(42rem,90dvh)] flex-col gap-4 sm:max-w-4xl" aria-describedby={undefined}>
       <DialogHeader><DialogTitle>会话与能力</DialogTitle></DialogHeader>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <Tabs defaultValue="tree" className="min-h-0 flex-1">
+      {(error || loadError) && <Alert variant="destructive"><AlertDescription>{error || loadError}</AlertDescription></Alert>}
+      {notice && <p role="status" className="text-sm">{notice}</p>}
+      <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <TabsList variant="line"><TabsTrigger value="tree">会话树</TabsTrigger><TabsTrigger value="capabilities">能力</TabsTrigger><TabsTrigger value="context">上下文</TabsTrigger></TabsList>
           <Button variant="ghost" size="icon-sm" aria-label="刷新会话状态" onClick={() => void load()}><RefreshCw /></Button>
@@ -100,16 +122,24 @@ export function SessionControls({ conversationId, busy, revision, onNavigate, on
             </div>)}
             {state?.resources?.filter((resource) => resource.name.toLowerCase().includes(search.toLowerCase())).map((resource) => <div key={resource.kind + resource.name} className="flex items-center justify-between gap-4 py-3">
               <div className="min-w-0"><p className="text-sm">{resource.name}</p><p className="text-xs text-muted-foreground">{resource.kind} {resource.detail}</p></div>
-              <Badge variant="outline">{{ configured: "已配置", loaded: "已加载", error: "连接异常" }[resource.state]}</Badge>
+              <div className="flex shrink-0 items-center gap-2"><Badge variant="outline">{{ configured: "已配置", loaded: "已加载", error: "连接异常" }[resource.state]}</Badge>
+                {resource.kind !== "mcp" && resource.state === "loaded" && <Button size="sm" variant="ghost" onClick={() => {
+                  onUseResource(resource.kind === "skill" ? "/skill:" + resource.name : "/" + resource.name); setOpen(false);
+                }}>使用</Button>}</div>
             </div>)}
           </div></ScrollArea>
         </TabsContent>
         <TabsContent value="context" className="flex min-h-0 flex-1 flex-col gap-5 py-3">
-          {state?.context && <Context usedTokens={state.context.tokens || 0} maxTokens={state.context.contextWindow}>
+          {state?.context?.tokens != null && <Context usedTokens={state.context.tokens} maxTokens={state.context.contextWindow}>
             <ContextTrigger aria-label="会话上下文用量" /><ContextContent><ContextContentHeader /></ContextContent>
           </Context>}
           <p className="text-sm text-muted-foreground">{state?.context?.tokens == null ? "本次上下文用量尚未统计" : `${state.context.tokens.toLocaleString()} / ${state.context.contextWindow.toLocaleString()} tokens`}</p>
+          <FieldGroup><Field><FieldLabel htmlFor="compaction-instructions">压缩时保留的重点（可选）</FieldLabel>
+            <Textarea id="compaction-instructions" value={instructions} onChange={(event) => setInstructions(event.target.value)} maxLength={2000} placeholder="例如：保留当前目标、已完成的操作和待处理的问题" rows={2} disabled={working} />
+          </Field></FieldGroup>
           <Button className="self-start" size="sm" variant="outline" disabled={busy || working || !nodes.length} onClick={() => void act("compact")}><Scissors />{working ? "正在压缩…" : "压缩当前上下文"}</Button>
+          {lastCompaction && <div className="flex min-h-0 flex-1 flex-col gap-2"><p className="text-xs text-muted-foreground">最近压缩 · {new Date(lastCompaction.createdAt).toLocaleString("zh-CN")}</p>
+            <ScrollArea className="min-h-16 flex-1 rounded-md border p-3"><p className="whitespace-pre-wrap break-words text-sm">{lastCompaction.text}</p></ScrollArea></div>}
           {Object.entries(state?.statuses || {}).map(([key, value]) => <p key={key} className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{value}</p>)}
         </TabsContent>
       </Tabs>

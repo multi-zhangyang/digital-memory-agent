@@ -20,7 +20,7 @@ export function capabilityStatuses(config: AppConfig, store: Store, features: Me
     { ...status("memory.activities", "生活活动整理", ["M1", "M2", "M3", "M4"], ["organize_memories", "query_memory_activities", "change_memory_activities"], !!text,
       text ? `整理模型：${text}；候选归组、来源与集中核对` : "未配置文字处理模型"), verification: "not-verified" },
     status("memory.facts", "确认记忆与事件", ["M2", "M3", "M4"], ["search_memories", "query_events", "propose_memory", "inspect_memories", "change_memories", "manage_memory_links"]),
-    { ...status("memory.embeddings", "本地语义、图像与人物特征", ["M1", "M2", "M3"], [], !!config.localProcessor, "检索编码器可替换；人物聚类仅提供候选关联"), available: featureStatus.state === "ready", verification: "not-verified" },
+    { ...status("memory.embeddings", "语义、图像与人物特征", ["M1", "M2", "M3"], [], featureStatus.state !== "not_configured", "在模型连接中配置特征服务；人物聚类仅提供候选关联"), available: featureStatus.state === "ready", verification: "not-verified" },
     status("memory.jobs", "独立后台作业与恢复", ["M1", "M2", "M4", "M5"], ["process_assets", "read_job_result", "manage_job"]),
     status("memory.dataset", "训练与评测数据准备", ["M4", "M5"], ["build_dataset", "rebuild_dataset", "inspect_dataset", "review_dataset", "deliver_dataset"], true, dataset ? `问题生成模型：${dataset}；Agent 可重建、修订样本并核验交付` : "来源核验和模板导出可用；模型问题生成未配置"),
     status("memory.dataset-review", "后台问答核验", ["M5"], ["audit_dataset", "read_job_result", "manage_job"], !!review,

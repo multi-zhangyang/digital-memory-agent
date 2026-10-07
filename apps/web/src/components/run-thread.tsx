@@ -163,7 +163,7 @@ function RunPlan({ run }: { run: Run }) {
   if (!run.plan.length) return null;
   return (
             <Plan
-              defaultOpen
+              defaultOpen={isActive(run)}
               className="gap-2 border-0 bg-transparent py-1 shadow-none"
             >
               <PlanHeader className="flex-row items-center px-0">
@@ -249,6 +249,12 @@ export const RunThread = memo(function RunThread({
     return () => clearTimeout(timer);
   }, [run.id]);
   const busy = isActive(run);
+  const currentMessage = run.parts.findLast((part) => part.type === "message" && part.role === "assistant");
+  const hasLiveContent = currentMessage?.type === "message" && currentMessage.state === "streaming" &&
+    run.parts.some((part) => part.messageId === currentMessage.id &&
+      (part.type === "tool" || ((part.type === "text" || part.type === "reasoning") && part.text)));
+  const waitingForOutput = run.status === "queued" || (run.status === "running" &&
+    (!run.phase || run.phase === "generating") && !hasLiveContent);
   const branch = activeEntryIds && new Set(activeEntryIds);
   const showDelivery = !branch || !run.entryId || branch.has(run.entryId) || busy;
   const response = run.parts
@@ -347,8 +353,8 @@ export const RunThread = memo(function RunThread({
           <RunActivities run={run} assets={assets} onInspect={onInspect} />
           {run.parts.flatMap((part) => part.type === "tool" && part.name === "deliver_dataset" && part.state === "complete" ? [part] : []).map((part) =>
             <Button key={part.toolCallId} size="sm" variant="outline" className="self-start" onClick={() => onDelivery?.(run.id, part.toolCallId)}>查看训练文件</Button>)}
-          {!run.parts.length && busy && (
-            <div role="status" className="text-sm">
+          {waitingForOutput && (
+            <div role="status" className="text-sm" data-testid="model-waiting">
               <Shimmer>
                 {run.status === "queued" ? "等待前一项任务" : "正在处理"}
               </Shimmer>

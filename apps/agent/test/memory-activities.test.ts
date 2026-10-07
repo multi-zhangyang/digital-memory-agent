@@ -37,6 +37,53 @@ async function source(store: Store, content: string, date = "2026-09-20") {
   return { asset, memory };
 }
 describe("activity organization", () => {
+  it("passes task explanations to organization without rewriting observations", async () => {
+    let received: ActivityExtractionInput | undefined;
+    const { store, activities, service } = await fixture(async (input) => {
+      received = input;
+      return { activities: [{ title: "周日聚餐", summary: "用户说明这些资料来自周日在小馆的聚餐。", occurredAt: "2026-10-04", place: "小馆",
+        members: input.requiredRefs, issues: [], reason: "用户说明同一次聚餐" }] };
+    });
+    const a = await source(store, "桌上有餐具。", ""), b = await source(store, "桌边的座椅。", "");
+    const context = { referenceTime: "2026-10-07T04:00:00Z", timeZone: "Asia/Shanghai",
+      messages: [{ id: "request", text: "这些是上周日聚餐的资料，请整理。" }, { id: "answer", text: "小馆", question: "聚餐在哪里？" }] };
+    const job = await service.submit({ assetIds: [a.asset.id, b.asset.id], context }, { requestId: "context", ownership: "library" });
+    await service.idle();
+    expect(service.job(job.id)).toMatchObject({ status: "completed", context });
+    expect(received?.context).toEqual({ ...context, observationRefs: ["m1", "m2"] });
+    expect(activities.list().activities[0].occurredAt).toBe("2026-10-04");
+    expect(store.memories.get<MemoryEntry>("memory", a.memory.id)).toMatchObject({ content: "桌上有餐具。", occurredAt: "", status: "draft" });
+  });
+  it("appends to the same confirmed activity and recalls a later correction", async () => {
+    const { store, activities, service } = await fixture();
+    const first = await source(store, "在公园野餐。"), second = await source(store, "收起野餐垫。");
+    const initial = activities.save(activities.candidate({ title: "公园野餐", summary: "在公园野餐。", occurredAt: "2026-09-20", place: "公园", issues: [], reason: "素材观察" }, [first.memory]));
+    activities.change({ action: "confirm-activity", refs: [{ id: initial.id, version: 1 }], reason: "确认野餐活动" }, { actor: "user" });
+    const before = activities.get(initial.id), fact = store.memories.get<MemoryEntry>("memory", before.eventMemoryId!)!;
+    const singleton = activities.save(activities.candidate({ title: "收尾", summary: "收起野餐垫。", occurredAt: "2026-09-20", place: "", issues: [], reason: "观察" }, [second.memory]));
+    await expect(service.submit({ assetIds: [second.asset.id], targetActivityId: initial.id }, { requestId: "outside", allowedAssetIds: [second.asset.id] })).rejects.toMatchObject({ code: "SOURCE_SCOPE" });
+    const job = await service.submit({ assetIds: [second.asset.id], targetActivityId: initial.id }, { requestId: "append", ownership: "library" });
+    await service.idle();
+    expect(service.job(job.id)).toMatchObject({ status: "completed", activityIds: [initial.id] });
+    const appended = activities.detail(initial.id);
+    expect(appended.activity).toMatchObject({ id: before.id, summary: before.summary, status: "confirmed", eventMemoryId: before.eventMemoryId, stale: false });
+    expect(appended.memories).toHaveLength(2);
+    expect(activities.list().total).toBe(1);
+    expect(activities.raw(singleton.id).replacedBy).toBe(initial.id);
+    expect(store.memories.get<MemoryEntry>("memory", before.eventMemoryId!)?.version).toBe(fact.version);
+    expect(store.memories.get<MemoryEntry>("memory", second.memory.id)?.status).toBe("draft");
+    activities.change({ action: "correct-activity", refs: [{ id: initial.id, version: appended.activity.version }],
+      values: { title: "植物园野餐", summary: "在植物园野餐。", occurredAt: "2026-09-20", place: "植物园" }, reason: "地点更正为植物园" }, { actor: "user" });
+    expect(activities.list({ query: "植物园" }).activities[0].id).toBe(initial.id);
+    expect(store.memories.searchMemories("植物园")[0].content).toBe("在植物园野餐。");
+    expect(activities.get(initial.id).sources).toHaveLength(2);
+    // Corrections made through the memory entry also update its activity card.
+    const correctedFact = store.memories.get<MemoryEntry>("memory", before.eventMemoryId!)!;
+    store.memories.updateMemory(correctedFact.id, { place: "杉溪公园" }, correctedFact.version);
+    await store.events.flush();
+    expect(activities.get(initial.id)).toMatchObject({ title: "杉溪公园野餐", summary: "在杉溪公园野餐。", place: "杉溪公园" });
+    expect(activities.get(initial.id).sources).toHaveLength(2);
+  });
   it("keeps candidates separate, confirms only activity content, and immediately invalidates a derived fact when its source is corrected", async () => {
     const { store, activities } = await fixture(); const { memory } = await source(store, "在公园野餐。");
     const activity = activities.save(activities.candidate({ title: "野餐", summary: "在公园野餐。", occurredAt: memory.occurredAt, place: "公园", issues: [], reason: "素材观察" }, [memory]));
@@ -162,6 +209,10 @@ describe("activity organization", () => {
     ] };
     const proposal = { title: "午餐", summary: "候选", occurredAt: "2026-09-21", place: "小馆", issues: [], reason: "都是餐饮场景", members: ["m1", "m2"] };
     expect(() => validateActivities(input, { activities: [proposal] })).toThrow(/没有共同原件/);
+    const context = { messages: [{ id: "user", text: "这张照片和记录是同一次午餐。" }], referenceTime: "2026-09-22T00:00:00Z", timeZone: "Asia/Shanghai", observationRefs: ["m1", "m2"] };
+    expect(() => validateActivities({ ...input, context }, { activities: [proposal] })).not.toThrow();
+    expect(() => validateActivities({ ...input, context: { ...context, observationRefs: ["m1"] } }, { activities: [proposal] })).toThrow(/没有共同原件/);
+    expect(() => validateActivities({ ...input, context, separated: [["m1", "m2"]] }, { activities: [proposal] })).toThrow(/分开/);
     input.observations[1] = { ...input.observations[1], occurredAt: "", place: "", sources: [{ ref: "s1", kind: "image" }] };
     expect(() => validateActivities(input, { activities: [{ ...proposal, occurredAt: "", place: "" }] })).not.toThrow();
   });

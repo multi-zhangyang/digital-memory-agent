@@ -113,6 +113,10 @@ export class MemoryRecords extends RecordStore {
           ? undefined
           : (patch.attribute ?? previous.attribute),
     };
+    if (previous.derivedFrom?.length && previous.place && patch.place && patch.place !== previous.place) {
+      if (patch.title === undefined) next.title = previous.title.replaceAll(previous.place, patch.place);
+      if (patch.content === undefined) next.content = previous.content.replaceAll(previous.place, patch.place);
+    }
     next.editedBy = actor;
     if (actor === "agent") {
       if (previous.status !== "draft" || (patch.status && patch.status !== "draft"))

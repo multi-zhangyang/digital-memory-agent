@@ -61,11 +61,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectGroup,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -336,7 +337,7 @@ export function WorkbenchComposer({
       if (uploadInput.current) uploadInput.current.value = "";
     }
   }
-  const thinkingSelect = (compact = false) => (
+  const thinkingSelect = () => (
     <Select
       disabled={continuing}
       value={level}
@@ -347,21 +348,17 @@ export function WorkbenchComposer({
       <SelectTrigger
         aria-label="思考强度"
         size="sm"
-        className={
-          compact
-            ? "h-7 w-auto gap-1 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none dark:bg-transparent"
-            : "w-full"
-        }
+        className="w-full"
       >
-        {!compact && <Brain className="size-4" />}
+        <Brain />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {thinkingLevels.map((value) => (
+        <SelectGroup>{thinkingLevels.map((value) => (
           <SelectItem key={value} value={value}>
             {value}
           </SelectItem>
-        ))}
+        ))}</SelectGroup>
       </SelectContent>
     </Select>
   );
@@ -438,7 +435,7 @@ export function WorkbenchComposer({
           <PromptInput
             maxFiles={0}
             resetOnSubmit={false}
-            className="[&>[data-slot=input-group]]:rounded-2xl"
+            className="[&>[data-slot=input-group]]:rounded-2xl [&>[data-slot=input-group]]:shadow-sm"
             onSubmit={async () => {
               if (uploadLock.current || submitting) return;
               const localCommand = [
@@ -448,7 +445,7 @@ export function WorkbenchComposer({
                 "/settings",
                 "/compact",
                 "/fork",
-              ].includes(latest.current.text.trim());
+              ].includes(latest.current.text.trim()) || /^\/compact(?:\s|$)/.test(latest.current.text.trim());
               if (
                 running &&
                 onSteer &&
@@ -548,13 +545,13 @@ export function WorkbenchComposer({
                 placeholder={
                   running
                     ? "补充指令，或安排下一项任务…"
-                    : "描述任务，或添加资料…"
+                    : compact ? "继续对话…" : "记下此刻，或添加照片、视频和文件…"
                 }
                 value={draft.text}
                 className={
                   compact
                     ? "min-h-20 max-h-48 px-4 pb-3 pt-4 text-base leading-7 md:text-base"
-                    : "min-h-32 max-h-64 px-5 pb-4 pt-5 text-base leading-7 md:text-base"
+                    : "min-h-28 max-h-64 px-5 pb-4 pt-5 text-base leading-7 md:text-base"
                 }
                 onChange={(event) => {
                   patch({ text: event.target.value });
@@ -615,7 +612,10 @@ export function WorkbenchComposer({
               </div>
             )}
             <PromptInputFooter className="gap-2 px-3 pb-3">
-              <PromptInputTools className="min-w-0 gap-1">
+              <PromptInputTools className="shrink-0 gap-1">
+                <PromptInputButton aria-label="上传资料" onClick={() => uploadInput.current?.click()} disabled={!!uploading}>
+                  <Paperclip data-icon="inline-start" /><span className="hidden @sm:inline">添加资料</span>
+                </PromptInputButton>
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger
                     aria-label="添加附件与工具"
@@ -675,13 +675,15 @@ export function WorkbenchComposer({
                     </PromptInputActionMenuItem>
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
+              </PromptInputTools>
+              <PromptInputTools className="min-w-0 gap-1">
                 {model ? (
                   <ModelSelector open={modelOpen} onOpenChange={setModelOpen}>
                     <ModelSelectorTrigger asChild>
                       <PromptInputButton
                         aria-label="选择对话模型"
                         disabled={continuing}
-                        className="min-w-0 max-w-40 shrink gap-1.5 @md:max-w-52"
+                        className="min-w-0 max-w-28 shrink gap-1 @lg:max-w-44"
                       >
                         <span className="truncate">{model.name}</span>
                         <ChevronDown data-icon="inline-end" />
@@ -774,40 +776,9 @@ export function WorkbenchComposer({
                     连接模型
                   </Button>
                 )}
-                {model?.reasoning && (
-                  <div className="hidden border-l pl-1 @lg:block">
-                    {thinkingSelect(true)}
-                  </div>
-                )}
-              </PromptInputTools>
-              <PromptInputTools className="shrink-0 gap-1">
-                <Select
-                  disabled={continuing}
-                  value={
-                    (continuing
-                      ? running.permissionMode
-                      : draft.permissionMode) || "auto"
-                  }
-                  onValueChange={(value) =>
-                    patch({
-                      permissionMode: value as TaskDraft["permissionMode"],
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    aria-label="本次权限"
-                    size="sm"
-                    className="h-8 w-auto gap-1 border-0 bg-transparent px-1.5 text-xs text-muted-foreground shadow-none dark:bg-transparent"
-                  >
-                    <Shield className="hidden size-3 @xl:block" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="read">只读</SelectItem>
-                    <SelectItem value="ask">询问</SelectItem>
-                    <SelectItem value="auto">自动</SelectItem>
-                  </SelectContent>
-                </Select>
+                <PromptInputButton aria-label="任务设置" title="任务设置 · 思考、权限与记忆" onClick={() => setDialog("settings")}>
+                  <Settings2 />
+                </PromptInputButton>
                 {running && onSteer && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -962,7 +933,15 @@ export function WorkbenchComposer({
           <DialogHeader>
             <DialogTitle>任务设置</DialogTitle>
           </DialogHeader>
-          <div className="space-y-6 py-2">
+          <FieldGroup className="py-2">
+            <Field>
+              <FieldLabel>执行权限</FieldLabel>
+              <Select disabled={continuing} value={(continuing ? running.permissionMode : draft.permissionMode) || "auto"}
+                onValueChange={(value) => patch({ permissionMode: value as TaskDraft["permissionMode"] })}>
+                <SelectTrigger aria-label="本次权限" className="w-full"><Shield /><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup><SelectItem value="read">只读</SelectItem><SelectItem value="ask">询问</SelectItem><SelectItem value="auto">自动</SelectItem></SelectGroup></SelectContent>
+              </Select>
+            </Field>
             {model?.reasoning && (
               <Field>
                 <FieldLabel>思考强度</FieldLabel>
@@ -982,13 +961,13 @@ export function WorkbenchComposer({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="library">按需查询资料库</SelectItem>
+                  <SelectGroup><SelectItem value="library">按需查询资料库</SelectItem>
                   <SelectItem
                     value="selected"
                     disabled={!draft.assetIds.length}
                   >
                     仅所选资料
-                  </SelectItem>
+                  </SelectItem></SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -1008,7 +987,7 @@ export function WorkbenchComposer({
               <FieldLabel htmlFor="capture-personal-memory">自动记录个人陈述</FieldLabel>
               <Switch id="capture-personal-memory" disabled={continuing} checked={draft.captureMemory ?? captureDefault} onCheckedChange={(captureMemory) => patch({ captureMemory })} />
             </Field>
-          </div>
+          </FieldGroup>
         </DialogContent>
       </Dialog>
     </div>

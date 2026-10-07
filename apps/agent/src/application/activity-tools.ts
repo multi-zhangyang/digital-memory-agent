@@ -4,7 +4,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { Store } from "../store.js";
 import type { MemoryOrganizationService } from "../memory/organization-service.js";
 import type { TaskJobs } from "../harness/jobs.js";
-import { commandRun, memoryCommandContext, receiptSummary } from "./memory-command-context.js";
+import { commandRun, deliveredInstructions, memoryCommandContext, receiptSummary } from "./memory-command-context.js";
 import { MemorySourceVerifier } from "../memory/source-verifier.js";
 import { activityToolView } from "../memory/activities.js";
 
@@ -20,13 +20,17 @@ export const activityChangeSchema = Type.Object({
 
 export function createActivityTools(store: Store, organization: MemoryOrganizationService, jobs: TaskJobs, conversationId: string) {
   return [defineTool({ name: "organize_memories", label: "整理生活活动",
-    description: "Organize photos/text into source-linked candidate activities in a durable background job. Missing observations are processed first. Reuse existing activity candidates across authorized library sources. Unknown people and dates remain unknown. Automatic grouping is reversible, not fact confirmation. The harness delivers results; do not poll. Selected scope is enforced by the server.",
+    description: "Organize photos/text into activities in a durable background job. Current user messages and answered questions are passed automatically; do not ask users to repeat them or create a text file. For an explicit request to add sources to an existing activity, query its current id and pass targetActivityId: its ID and text are preserved. Missing observations are processed first. New source observations stay unconfirmed. The harness delivers results; do not poll. Selected scope is enforced by the server.",
     parameters: Type.Object({ assetIds: Type.Optional(Type.Array(uuid, { minItems: 1, maxItems: 200, uniqueItems: true })),
-      title: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })) }, { additionalProperties: false }),
+      title: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })), targetActivityId: Type.Optional(uuid) }, { additionalProperties: false }),
     async execute(toolCallId, input, signal) {
       signal?.throwIfAborted(); const run = commandRun(store, conversationId, true);
       const assetIds = input.assetIds || run.assetIds;
-      const job = await organization.submit({ ...input, assetIds }, { requestId: createHash("sha256").update(JSON.stringify([run.id, "organize", [...new Set(assetIds)].sort()])).digest("hex"),
+      const questions = [...(run.questions || []), ...(run.question ? [run.question] : [])];
+      const context = { messages: deliveredInstructions(run).map(({ id, text }) => ({ id, text,
+        question: questions.find((q) => id === run.id + ":answer" + (q.id ? ":" + q.id : ""))?.text })),
+        referenceTime: run.createdAt, timeZone: store.memories.ledger.settings().timeZone };
+      const job = await organization.submit({ ...input, assetIds, context }, { requestId: createHash("sha256").update(JSON.stringify([run.id, "organize", [...new Set(assetIds)].sort(), input.targetActivityId, context])).digest("hex"),
         modelId: run.modelId, allowedAssetIds: run.scope === "selected" ? run.assetIds : undefined, ownership: run.scope === "library" ? "library" : "task" });
       const attached = jobs.attach(run.id, "memory-organization", job.id, toolCallId, job.ownership);
       return output({ job: attached, next: "等待后台完成事件，再检查活动、来源和疑点；候选归组不等于事实确认。" });

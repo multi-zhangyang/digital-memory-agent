@@ -23,8 +23,8 @@ async function fixture(projectPath?: string) {
   const directory = await mkdtemp(join(tmpdir(), "harness-test-"));
   cleaners.push(() => rm(directory, { recursive: true, force: true }));
   const requests: any[] = [];
-  const provider = Fastify();
-  provider.post<{ Body: { messages: any[]; stream: boolean } }>(
+  const provider = Fastify({ forceCloseConnections: true });
+  provider.post<{ Body: { messages: any[]; stream: boolean; tools?: any[] } }>(
     "/v1/chat/completions",
     async (req, reply) => {
       requests.push(req.body);
@@ -35,9 +35,11 @@ async function fixture(projectPath?: string) {
         typeof last?.content === "string"
           ? last.content
           : (last?.content || []).map((p: any) => p.text || "").join("");
+      const discoveryIds = new Set(messages.flatMap((message: any) => (message.tool_calls || [])
+        .filter((call: any) => call.function.name === "tool_search").map((call: any) => call.id)));
       const count = messages
         .slice(i + 1)
-        .filter((m: any) => m.role === "tool").length;
+        .filter((m: any) => m.role === "tool" && !discoveryIds.has(m.tool_call_id)).length;
       const calls: Record<string, Array<[string, unknown]>> = {
         workflow: [
           ["read", { path: "input.csv" }],
@@ -74,14 +76,16 @@ async function fixture(projectPath?: string) {
           ],
         ],
         mcp: [["mcp__fixture__echo", { text: "hello" }]],
-        "mcp-deferred": [["tool_search", { query: "fixture echo" }], ["mcp__fixture__echo", { text: "hello" }]],
+        "mcp-deferred": [["mcp__fixture__echo", { text: "hello" }]],
         "nullable-artifact": [
           ["write_artifact", { title: "实际作业说明", content: "此条用于验证新建结果，不包含个人事实。", sourceAssetIds: [], artifactId: null, version: null }],
           ["read_artifact", { artifactId: null }],
           ["write_artifact", { title: "不能伪造目标", content: "错误 ID 必须被拒绝。", sourceAssetIds: [], artifactId: "00000000-0000-0000-0000-000000000000", version: 1 }],
         ],
       };
-      const call = calls[prompt]?.[count];
+      let call = calls[prompt]?.[count];
+      if (call && !req.body.tools?.some((tool) => tool.function.name === call![0]))
+        call = ["tool_search", { query: call[0], limit: 1 }];
       if (!req.body.stream)
         return {
           id: "completion",
@@ -208,14 +212,21 @@ async function fixture(projectPath?: string) {
 it("accepts nullable creation and listing through Pi while rejecting invented artifact IDs", async () => {
   const f = await fixture();
   const completed = await f.wait((await f.start("nullable-artifact", "auto")).id);
-  const tools = completed.parts.filter((part) => part.type === "tool");
+  const tools = completed.parts.filter((part) => part.type === "tool").filter((part) => part.name !== "tool_search");
   expect(tools.map((part) => part.state)).toEqual(["complete", "complete", "error"]);
   const saved = (await f.api("/workspace", undefined, "GET")).artifacts;
   expect(saved).toHaveLength(1);
   expect(saved[0]).toMatchObject({ title: "实际作业说明", version: 1 });
   expect(saved[0].id).not.toBe("00000000-0000-0000-0000-000000000000");
-  const schema = f.requests[0].tools.find((tool: any) => tool.function.name === "write_artifact").function.parameters;
+  expect(f.requests[0].tools.map((tool: any) => tool.function.name).sort()).toEqual(
+    ["ask_user", "read", "read_evidence", "search_evidence", "search_memories", "tool_search"].sort());
+  expect(completed.parts).toContainEqual(expect.objectContaining({ type: "tool", name: "tool_search", state: "complete" }));
+  const loaded = f.requests.find((request) => request.tools.some((tool: any) => tool.function.name === "write_artifact"));
+  expect(loaded.tools.some((tool: any) => tool.function.name === "build_dataset")).toBe(false);
+  const schema = loaded.tools.find((tool: any) => tool.function.name === "write_artifact").function.parameters;
   expect(JSON.stringify(schema.properties.artifactId)).toContain('"type":"null"');
+  await f.wait((await f.start("hello", "auto")).id);
+  expect(f.requests.at(-1).tools).toHaveLength(6);
 });
 it("delivers selected file excerpts and the exact historical revision through real Pi, without loading unrelated files", async () => {
   const directory = await mkdtemp(join(tmpdir(), "referenced-project-"));
@@ -424,7 +435,7 @@ it("runs native Pi file tools and a sandboxed script, streams output, persists r
   );
   const run = await f.wait((await f.start("workflow")).id);
   expect(run.status, run.error).toBe("completed");
-  expect(run.parts.filter((p) => p.type === "tool").map((p) => p.name)).toEqual(
+  expect(run.parts.filter((p) => p.type === "tool").filter((p) => p.name !== "tool_search").map((p) => p.name)).toEqual(
     ["read", "write", "bash", "edit", "read"],
   );
   expect(run.inputEntryId).toEqual(expect.any(String));
@@ -470,7 +481,7 @@ it("enforces read and ask modes, accepts a real approval, and rejects symlink an
   const f = await fixture();
   const read = await f.wait((await f.start("write", "read")).id);
   expect(
-    read.parts.find((p) => p.type === "tool")?.state,
+    read.parts.filter((p) => p.type === "tool").find((p) => p.name === "write")?.state,
     JSON.stringify(read),
   ).toBe("error");
   const ask = await f.start("write", "ask");
@@ -483,7 +494,7 @@ it("enforces read and ask modes, accepts a real approval, and rejects symlink an
   expect(approvals[0].status).toBe("pending");
   await f.api("/approvals/" + approvals[0].id, { approved: false });
   expect(
-    (await f.wait(ask.id)).parts.find((p) => p.type === "tool")?.state,
+    (await f.wait(ask.id)).parts.filter((p) => p.type === "tool").find((p) => p.name === "write")?.state,
   ).toBe("error");
   const accepted = await f.start("write", "ask");
   await f.wait(accepted.id, "waiting");

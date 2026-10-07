@@ -1,14 +1,18 @@
 "use client";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { datasetDownloadUrl, downloadFile } from "@/lib/api";
-export function Markdown({ content }: { content: string }) {
+const textAnimation = { animation: "fadeIn", duration: 150, stagger: 0 } as const;
+
+export const Markdown = memo(function Markdown({ content, streaming = false }: { content: string; streaming?: boolean }) {
   const [error, setError] = useState("");
   return (
     <>
     <MessageResponse
       skipHtml
+      isAnimating={streaming}
+      animated={textAnimation}
       components={{
         img: () => null,
         a: ({ href, children }) => (
@@ -40,4 +44,4 @@ export function Markdown({ content }: { content: string }) {
     {error && <Alert><AlertTitle>{error}</AlertTitle></Alert>}
     </>
   );
-}
+});

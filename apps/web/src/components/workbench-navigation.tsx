@@ -1,5 +1,6 @@
 "use client";
 
+import { preloadWorkbenchPage } from "./workbench-pages";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
@@ -54,8 +55,8 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
   }, [conversations, taskId]);
 
   return (
-    <Sidebar variant="inset" collapsible="icon" data-testid="workbench-navigation">
-      <SidebarHeader className="gap-4 px-3 pb-0 pt-3">
+    <Sidebar variant="sidebar" collapsible="icon" data-testid="workbench-navigation">
+      <SidebarHeader className="gap-4 px-3 pb-1 pt-3">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="digital memory" aria-label="digital memory" onClick={() => onTask(null)} size="lg">
@@ -74,17 +75,18 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent className="gap-4">
+      <SidebarContent className="gap-5">
         <SidebarGroup className="px-3">
           <SidebarMenu>
             {[
-              { id: "tasks", label: "全部对话", aria: "所有任务", icon: MessageSquare },
               { id: "memory", label: "记忆", aria: "记忆", icon: Brain },
               { id: "assets", label: "资料库", aria: "资料库", icon: FolderOpen },
+              { id: "tasks", label: "全部对话", aria: "所有任务", icon: MessageSquare },
             ].map(({ id, label, aria, icon: Icon }) => (
               <SidebarMenuItem key={id}>
                 <SidebarMenuButton tooltip={label} aria-label={aria} isActive={view === id}
-                  onClick={() => onView(id as WorkbenchPage)} className="h-10">
+                  onPointerEnter={() => preloadWorkbenchPage(id as WorkbenchPage)} onFocus={() => preloadWorkbenchPage(id as WorkbenchPage)}
+                  onClick={() => onView(id as WorkbenchPage)} className="h-9">
                   <Icon /><span>{label}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -136,13 +138,13 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
           </SidebarGroup>
         )}
       </SidebarContent>
-      <SidebarFooter className="gap-3 p-3">
+      <SidebarFooter className="gap-2 p-3">
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton tooltip="管理" aria-label="打开管理菜单" isActive={["processing", "artifacts", "datasets"].includes(view)} className="h-10">
-                  <PanelsTopLeft /><span>管理</span><ChevronRight className="ml-auto" />
+                  <PanelsTopLeft /><span>更多工作</span><ChevronRight className="ml-auto" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="end" className="w-48">
@@ -164,7 +166,7 @@ export const WorkbenchNavigation = memo(function WorkbenchNavigation({
         <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
           <SidebarMenu className="min-w-0 flex-1">
             <SidebarMenuItem>
-              <SidebarMenuButton aria-label="设置" tooltip="设置" isActive={view === "settings"} onClick={() => onView("settings")}>
+              <SidebarMenuButton aria-label="设置" tooltip="设置" isActive={view === "settings"} onPointerEnter={() => preloadWorkbenchPage("settings")} onFocus={() => preloadWorkbenchPage("settings")} onClick={() => onView("settings")}>
                 <Settings2 /><span>设置</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

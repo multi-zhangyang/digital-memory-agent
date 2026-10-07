@@ -53,3 +53,25 @@ export interface ModelConfiguration {
   models: ModelInfo[];
   providers: ProviderStatus[];
 }
+
+export type FeatureChannel = "text" | "image" | "face";
+export type FeatureProtocol = "openai-embeddings" | "memory-features-v1";
+export interface FeatureConnectionSettings {
+  enabled: boolean;
+  protocol: FeatureProtocol;
+  baseUrl: string;
+  modelName: string;
+  revision: string;
+}
+export interface FeatureConnectionUpdate extends FeatureConnectionSettings {
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+export interface FeatureConnectionStatus extends FeatureConnectionSettings {
+  hasApiKey: boolean;
+}
+export interface FeatureModelConfiguration {
+  connections: Record<FeatureChannel, FeatureConnectionStatus>;
+  faceMatchThreshold: number;
+  faceMatchMargin: number;
+}

@@ -198,7 +198,7 @@ export function createGeneralTools(store: Store, conversationId: string) {
     operations: { readFile, access, detectImageMimeType: async () => null },
   });
   nativeRead.description =
-    "Read UTF-8 project files. Output is limited to 2000 lines or 50 KB; use offset and limit for large files. Image understanding is not configured.";
+    "Read an existing UTF-8 PROJECT FILE or SKILL.md by relative path, not a directory. To list a directory use list_files. Library assets are separate: use read_evidence with their evidenceId from task context, not read with an asset name or ID. Output is limited to 2000 lines or 50 KB; use offset and limit for large files.";
   const nativeBash = createBashToolDefinition(root, {
     exposeSessionEnvironment: false,
     operations: {

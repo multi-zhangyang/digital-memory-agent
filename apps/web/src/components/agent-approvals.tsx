@@ -19,13 +19,15 @@ import { ToolOutput } from "@/components/ai-elements/tool";
 import { api } from "@/lib/api";
 import type { AgentApproval, Run } from "@memory/contracts";
 import { ShieldCheck, ShieldX } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import dynamic from "next/dynamic";
 
 const CodeBlock = dynamic(() =>
   import("@/components/ai-elements/code-block").then(
     (module) => module.CodeBlock,
   ),
+  { loading: () => <Skeleton className="h-8 w-full" /> },
 );
 export function AgentApprovals({
   run,
@@ -38,7 +40,11 @@ export function AgentApprovals({
     [answers, setAnswers] = useState<Record<string, string>>({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const loaded = useRef("");
   useEffect(() => {
+    const version = `${run.id}:${run.status}`;
+    // Completed approvals do not change when an Activity becomes visible again.
+    if (["completed", "failed", "stopped"].includes(run.status) && loaded.current === version) return;
     let done = false;
     const load = async () => {
       try {
@@ -46,6 +52,7 @@ export function AgentApprovals({
           "/runs/" + run.id + "/approvals",
         );
         if (!done) {
+          loaded.current = version;
           setApprovals(r.approvals);
           setAnswers((previous) => Object.fromEntries(r.approvals.map((approval) => [approval.id, previous[approval.id] ?? approval.prefill ?? ""])));
         }

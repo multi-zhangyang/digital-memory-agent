@@ -45,8 +45,8 @@ export function ArtifactLibrary({
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-5 py-10 sm:px-10 lg:px-12">
-      <div className="mx-auto max-w-5xl">
+    <div className="min-h-0 flex-1 overflow-auto px-6 py-8 sm:px-8">
+      <div className="mx-auto max-w-6xl">
         <div className="flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-3 text-2xl font-medium tracking-tight">
             整理结果<Badge variant="secondary">{artifacts.length}</Badge>

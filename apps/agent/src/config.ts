@@ -9,6 +9,7 @@ import {
   renameSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { readFeatureSettings, type FeatureSettings } from "./feature-config.js";
 import type {
   ConnectionSettings,
   ConnectionUpdate,
@@ -41,6 +42,7 @@ export interface AppConfig {
   connections: StoredConnection[];
   providers: ProviderConfig[];
   publicModels: ModelConfiguration;
+  featureModels?: FeatureSettings;
   localProcessor?: { python: string; modelsDir: string };
 }
 const definitions = [
@@ -228,9 +230,11 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .map((x) => x.trim())
       .filter(Boolean),
     ...modelsFrom(connections),
-    localProcessor: env.MEMORY_LOCAL_FEATURES === "off" ? undefined : (() => {
-      const python = resolve(env.MEMORY_WORKER_PYTHON || resolve(dataDir, "memory-worker/venv/bin/python"));
-      const modelsDir = resolve(env.MEMORY_FEATURE_MODELS || resolve(dataDir, "memory-worker/models"));
+    featureModels: readFeatureSettings(dataDir),
+    localProcessor: env.MEMORY_LOCAL_FEATURES === "off" || existsSync(resolve(dataDir, "feature-models.json")) ||
+      !env.MEMORY_WORKER_PYTHON || !env.MEMORY_FEATURE_MODELS ? undefined : (() => {
+      const python = resolve(env.MEMORY_WORKER_PYTHON!);
+      const modelsDir = resolve(env.MEMORY_FEATURE_MODELS!);
       return existsSync(python) && existsSync(resolve(modelsDir, "manifest.json")) ? { python, modelsDir } : undefined;
     })(),
   };

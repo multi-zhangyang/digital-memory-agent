@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { Asset, MemoryEntity, MemoryEntry, MemoryEvidence, MemoryObservation, MemorySpace, VideoFrame } from "@memory/contracts";
-import type { ImageFeatures } from "../integrations/local-features.js";
+import type { ImageFeatures } from "../integrations/feature-provider.js";
 import { evidenceOf } from "./values.js";
 import { UserFacingError } from "../errors.js";
 
@@ -125,12 +125,14 @@ export class MemoryGraph {
       const evidence: MemoryEvidence[] = [{ type: "asset", assetId: asset.id, name: asset.name, sha256: asset.sha256, start: 0, end: asset.size, ...(video ? { video } : {}) }];
       const sourceKey = [asset.id, asset.sha256, features.fingerprint, ...(video ? [video.timestamp] : [])];
       const space = asset.memorySpace || "personal";
+      const faceFingerprint = features.faceFingerprint || features.fingerprint;
       this.addObservation(hash([...sourceKey, "metadata"]), { kind: "metadata", space,
         assetId: asset.id, evidence, processor: features.fingerprint, output: features.metadata });
       const entities: string[] = [];
       return features.faces.map((face, index) => {
-        const observation = this.addObservation(hash([...sourceKey, "face", index, face.region]), {
-          kind: "face", space, assetId: asset.id, evidence, processor: features.fingerprint,
+        const key = hash([asset.id, asset.sha256, faceFingerprint, ...(video ? [video.timestamp] : []), "face", index, face.region]);
+        const observation = this.addObservation(key, {
+          kind: "face", space, assetId: asset.id, evidence, processor: faceFingerprint,
           output: { region: face.region, detectionScore: face.detectionScore, quality: face.quality, coordinateSpace: features.coordinateSpace,
             ...(video ? { video } : {}) } });
         const linked = this.db.prepare("SELECT entityId FROM memory_entity_links WHERE observationId=? AND active=1").get(observation.id) as { entityId: string } | undefined;
@@ -138,7 +140,8 @@ export class MemoryGraph {
         const matches = face.vector ? candidates(face.vector, entities) : [];
         const candidate = matches[0];
         // Deliberately a candidate association. This threshold is not an identity probability.
-        const match = candidate && candidate.similarity >= 0.55 && (!matches[1] || candidate.similarity - matches[1].similarity >= 0.1) ? candidate : undefined;
+        const match = candidate && candidate.similarity >= (features.facePolicy?.matchThreshold ?? 0.55) &&
+          (!matches[1] || candidate.similarity - matches[1].similarity >= (features.facePolicy?.matchMargin ?? 0.1)) ? candidate : undefined;
         const entity = match ? this.entity(match.entityId) : this.saveEntity({ id: randomUUID(), space, version: 1, state: "unknown", updatedAt: now() },
           { action: "unknown-face", observationId: observation.id });
         this.assignment(entity.id, observation.id, "candidate", match ? "特征相似的候选关联，身份未确认" : "未知身份", match?.similarity);

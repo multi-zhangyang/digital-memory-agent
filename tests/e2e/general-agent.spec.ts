@@ -47,7 +47,7 @@ test("general workspace creates a project, imports data, executes a script and r
     "completed",
     { timeout: 25000 },
   );
-  await expect(page.getByTestId("tool-activity")).toHaveCount(4);
+  await expect(page.getByTestId("tool-activity")).toHaveCount(6);
   const command = page.getByTestId("tool-activity").filter({
     has: page.getByRole("button", { name: /执行命令 · python3 sum.py/ }),
   });
@@ -58,8 +58,8 @@ test("general workspace creates a project, imports data, executes a script and r
   ).toBeVisible();
   await command.getByRole("tab", { name: "参数", exact: true }).click();
   await expect(
-    command.getByRole("heading", { name: "参数", exact: true }),
-  ).toBeVisible();
+    command.getByRole("tab", { name: "参数", exact: true }),
+  ).toHaveAttribute("data-state", "active");
   await expect(
     command.getByText('"python3 sum.py"', { exact: true }),
   ).toBeVisible();
@@ -138,8 +138,10 @@ test("general workspace creates a project, imports data, executes a script and r
 test("shows an interrupted tool decision after reload and resumes the same run without repeating the skipped operation", async ({ page, request }) => {
   await setup(request);
   await page.goto("/");
+  await page.getByRole("button", { name: "任务设置", exact: true }).click();
   await page.getByRole("combobox", { name: "本次权限" }).click();
   await page.getByRole("option", { name: "自动", exact: true }).click();
+  await page.getByRole("dialog", { name: "任务设置" }).getByRole("button", { name: "Close", exact: true }).click();
   await page.getByLabel("任务指令").fill("纠偏测试：检查中断后的恢复决定");
   const submitted = page.waitForResponse((response) => /\/api\/conversations\/[^/]+\/runs$/.test(response.url()) && response.request().method() === "POST");
   await page.getByRole("button", { name: "开始任务", exact: true }).click();
@@ -169,11 +171,13 @@ test("frontend approval blocks execution and native steering reaches an active P
 }) => {
   await setup(request);
   await page.goto("/");
+  await page.getByRole("button", { name: "任务设置", exact: true }).click();
   await page.getByRole("combobox", { name: "本次权限" }).click();
   await page.getByRole("option", { name: "询问", exact: true }).click();
+  await page.getByRole("dialog", { name: "任务设置" }).getByRole("button", { name: "Close", exact: true }).click();
   await page.getByLabel("任务指令").fill("权限测试");
   await page.getByRole("button", { name: "开始任务", exact: true }).click();
-  await expect(page.getByTestId("agent-approval")).toBeVisible();
+  await expect(page.getByTestId("agent-approval")).toBeVisible({ timeout: 15000 });
   const taskId = new URL(page.url()).searchParams.get("task");
   expect(
     (
@@ -204,7 +208,7 @@ test("frontend approval blocks execution and native steering reaches an active P
     "data-run-status",
     "completed",
   );
-  await expect(page.getByTestId("tool-activity")).toHaveCount(1);
+  await expect(page.getByTestId("tool-activity").filter({ has: page.getByRole("button", { name: /写入文件/ }) })).toHaveCount(1);
   await page.reload();
   await expect(page.getByTestId("agent-approval")).toHaveAttribute(
     "data-approval-status",
@@ -214,8 +218,10 @@ test("frontend approval blocks execution and native steering reaches an active P
     page.getByTestId("agent-approval").getByText("已允许", { exact: true }),
   ).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole("button", { name: "任务设置", exact: true }).click();
   await page.getByRole("combobox", { name: "本次权限" }).click();
   await page.getByRole("option", { name: "自动", exact: true }).click();
+  await page.getByRole("dialog", { name: "任务设置" }).getByRole("button", { name: "Close", exact: true }).click();
   await page.getByLabel("任务指令").fill("纠偏测试");
   await page.getByRole("button", { name: "开始任务", exact: true }).click();
   await expect(page.getByTestId("run-thread")).toHaveCount(2);

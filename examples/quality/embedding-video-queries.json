@@ -1,0 +1,10 @@
+{
+  "purpose": "两段公开视频的抽帧检索冒烟检查，非动作理解或独立准确率评估。问题在本轮帧编码输出前对照原始像素固定。",
+  "timestamps": [0, 2, 4],
+  "queries": [
+    { "id": "frame-q1", "split": "regression", "query": "有人提着蓝色水瓶，在光亮地面的室内走廊迎面走来。", "video": "walk-1" },
+    { "id": "frame-q2", "split": "regression", "query": "穿粉色上衣和深色裙子的人在走廊里往前走。", "video": "walk-1" },
+    { "id": "frame-q3", "split": "regression", "query": "戴着黑色口罩的两个人并排走在有白色柱子的走廊里。", "video": "walk-2" },
+    { "id": "frame-q4", "split": "regression", "query": "一个人打着紫色领带，旁边的人穿灰色套装。", "video": "walk-2" }
+  ]
+}

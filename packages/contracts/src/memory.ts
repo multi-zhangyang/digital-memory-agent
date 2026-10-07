@@ -244,9 +244,9 @@ export interface MemoryOverview {
 export interface MemoryFeatureStatus {
   state: "not_configured" | "starting" | "ready" | "unavailable";
   jobs: { queued: number; running: number; completed: number; failed: number; skipped: number };
-  models?: Record<"text" | "image" | "face", { id: string; revision: string; dimensions: number }>;
+  models?: Partial<Record<"text" | "image" | "face", { id: string; revision: string; dimensions: number }>>;
   fingerprint?: string;
-  device?: "cpu";
+  device?: "cpu" | "cuda" | "remote";
   network: boolean;
   identity: "candidate-association";
 }

@@ -105,7 +105,7 @@ export function MemoryCaptureList({
               >
                 <BookOpen data-icon="inline-start" />
                 <span className="truncate">
-                  {labels[job.status]}
+                  自动记录 · {labels[job.status]}
                   {job.memoryIds.length
                     ? ` · ${job.memoryIds.length} 条记忆`
                     : ""}
@@ -190,8 +190,13 @@ export function RunMemoryActivity({
   const refresh = useRef(onRefresh);
   refresh.current = onRefresh;
   const known = useRef("");
+  const settled = useRef("");
+  const knownMemories = useRef(memories);
+  knownMemories.current = memories;
   useEffect(() => {
     if (!run.captureJobIds?.length && !revision) return;
+    const version = `${run.id}:${run.captureJobIds?.join(",")}:${revision}`;
+    if (settled.current === version) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -208,10 +213,12 @@ export function RunMemoryActivity({
         );
         if (
           signature !== known.current &&
-          result.jobs.some((job) => job.status === "completed")
+          result.jobs.some((job) => job.status === "completed") &&
+          (known.current !== "" || result.jobs.some((job) => job.memoryIds.some((id) => !knownMemories.current.some((memory) => memory.id === id))))
         )
           refresh.current();
         known.current = signature;
+        if (result.jobs.length && result.jobs.every((job) => job.status === "completed" || job.status === "skipped")) settled.current = version;
         if (result.jobs.some(active))
           timer = setTimeout(() => void load(), 1500);
       } catch (failure) {

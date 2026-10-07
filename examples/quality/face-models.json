@@ -1,0 +1,94 @@
+{
+  "format": 1,
+  "purpose": "Isolated GPU feasibility and public-image face regression; not a production migration",
+  "codeRevision": "3e6486942a1be2da0e5b475fac375ea73264bd21",
+  "codeLicense": "MIT",
+  "weightsLicense": "InsightFace pretrained models: non-commercial research only",
+  "licenseSource": "https://github.com/deepinsight/insightface/tree/3e6486942a1be2da0e5b475fac375ea73264bd21/python-package#license",
+  "recognizer": "ResNet50@WebFace600K (ArcFace, 512 dimensions)",
+  "archives": [
+    {
+      "name": "buffalo_l.zip",
+      "url": "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip",
+      "bytes": 288621354,
+      "sha256": "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f"
+    },
+    {
+      "name": "buffalo_m.zip",
+      "url": "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_m.zip",
+      "bytes": 275951529,
+      "sha256": "d98264bd8f2dc75cbc2ddce2a14e636e02bb857b3051c234b737bf3b614edca9"
+    }
+  ],
+  "files": [
+    {
+      "path": "upstream/insightface/model_zoo/scrfd.py",
+      "url": "https://raw.githubusercontent.com/deepinsight/insightface/3e6486942a1be2da0e5b475fac375ea73264bd21/python-package/insightface/model_zoo/scrfd.py",
+      "bytes": 12852,
+      "sha256": "64b0b787e4c235ff80c1141614a77f2b2c24c90ba5b920f1bc91fde80cbef9f9"
+    },
+    {
+      "path": "upstream/insightface/model_zoo/arcface_onnx.py",
+      "url": "https://raw.githubusercontent.com/deepinsight/insightface/3e6486942a1be2da0e5b475fac375ea73264bd21/python-package/insightface/model_zoo/arcface_onnx.py",
+      "bytes": 3111,
+      "sha256": "89041694a9c2ec9f84c506797a810b5dc95ab57f89407de541de62a6fea981a9"
+    },
+    {
+      "path": "upstream/insightface/utils/face_align.py",
+      "url": "https://raw.githubusercontent.com/deepinsight/insightface/3e6486942a1be2da0e5b475fac375ea73264bd21/python-package/insightface/utils/face_align.py",
+      "bytes": 3356,
+      "sha256": "a8b34ddd06716f5ca7e7501415cbd3789ccbce18db9e557b35e537695290d922"
+    },
+    {
+      "path": "upstream/LICENSE",
+      "url": "https://raw.githubusercontent.com/deepinsight/insightface/3e6486942a1be2da0e5b475fac375ea73264bd21/LICENSE",
+      "bytes": 1082,
+      "sha256": "8be185bb59633fb66c5ee6ee3fdcbf0894eba65cce88bb442ec9c2f397a9dec0"
+    },
+    {
+      "path": "upstream/README.md",
+      "url": "https://raw.githubusercontent.com/deepinsight/insightface/3e6486942a1be2da0e5b475fac375ea73264bd21/python-package/README.md",
+      "bytes": 5544,
+      "sha256": "b1053fb8c67c8e0d5691151fe2793d9dcba1527fc1d089feb64665e307796f86"
+    },
+    {
+      "path": "scrfd-10g.onnx",
+      "archive": "buffalo_l.zip",
+      "member": "det_10g.onnx",
+      "bytes": 16923827,
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+    },
+    {
+      "path": "arcface-r50.onnx",
+      "archive": "buffalo_l.zip",
+      "member": "w600k_r50.onnx",
+      "bytes": 174383860,
+      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+    },
+    {
+      "path": "scrfd-2.5g.onnx",
+      "archive": "buffalo_m.zip",
+      "member": "buffalo_m/det_2.5g.onnx",
+      "bytes": 3292009,
+      "sha256": "041f73f47371333d1d17a6fee6c8ab4e6aecabefe398ff32cca4e2d5eaee0af9"
+    },
+    {
+      "path": "upstream/insightface/__init__.py",
+      "generated": "empty-package-init",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "upstream/insightface/model_zoo/__init__.py",
+      "generated": "empty-package-init",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "upstream/insightface/utils/__init__.py",
+      "generated": "empty-package-init",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

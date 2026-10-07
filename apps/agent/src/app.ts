@@ -35,6 +35,8 @@ import { AssetProcessingService } from "./memory/asset-processing-service.js";
 import { createMemoryCommandTools } from "./memory-command-tools.js";
 import { createProcessingTools } from "./processing-tools.js";
 import { LocalMemoryProcessor, type LocalFeatures } from "./integrations/local-features.js";
+import { configuredFeatureProcessor } from "./integrations/http-features.js";
+import { registerFeatureSettingsRoutes } from "./application/feature-settings-routes.js";
 import { MemoryFeatureService } from "./memory/feature-service.js";
 import { MemoryEvents } from "./memory/events.js";
 import { createKnowledgeTools } from "./memory-knowledge-tools.js";
@@ -79,7 +81,7 @@ export function buildApp(
     requestTimeout: 0,
   });
   const store = options.store || new Store(config.dataDir);
-  const featureWorker = options.features || (config.localProcessor ? new LocalMemoryProcessor(config.localProcessor) : undefined);
+  const featureWorker = options.features || configuredFeatureProcessor(config.featureModels) || (config.localProcessor ? new LocalMemoryProcessor(config.localProcessor) : undefined);
   const features = new MemoryFeatureService(store, featureWorker);
   const assetIndex = new AssetIndexService(store, features);
   const evidence = new EvidenceService(store, features);
@@ -103,11 +105,11 @@ export function buildApp(
     { catalog: generalToolCatalog, create: (id: string) => createGeneralTools(store, id) },
     { catalog: memoryToolCatalog, create: businessTools },
   ], () => capabilityStatuses(config, store, features));
-  let runtime = options.runtime || new PiRuntime(config, createPiHost(store, (id) => capabilities.tools(id)), models);
+  let runtime = options.runtime || new PiRuntime(config, createPiHost(store, (id) => capabilities.tools(id), activities), models);
   const resetRuntime = () => {
     models = new ModelAccess(config);
     processors = options.processors || new PiMemoryProcessors(config, models);
-    runtime = new PiRuntime(config, createPiHost(store, (id) => capabilities.tools(id)), models);
+    runtime = new PiRuntime(config, createPiHost(store, (id) => capabilities.tools(id), activities), models);
     store.events.publish("processing.configuration-changed", "models", new Date().toISOString());
   };
   let configuring = false;
@@ -199,6 +201,7 @@ export function buildApp(
     }),
   );
   app.get("/api/models", async () => config.publicModels);
+  registerFeatureSettingsRoutes(app, config, features);
   app.get("/api/tools", async () => ({
     tools: capabilities.catalog(),
   }));

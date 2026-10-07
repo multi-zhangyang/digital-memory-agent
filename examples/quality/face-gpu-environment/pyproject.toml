@@ -1,0 +1,24 @@
+[project]
+name = "digital-memory-face-gpu-comparison"
+version = "0.1.0"
+description = "Isolated CUDA 12 environment for SCRFD and ArcFace evaluation"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "numpy>=2.2,<3",
+  "pillow>=11,<13",
+  "opencv-python-headless>=4.11,<5",
+  "onnx>=1.17,<2",
+  "onnxruntime-gpu==1.24.4",
+  "scikit-image>=0.25,<1",
+  "nvidia-cublas-cu12==12.8.4.1",
+  "nvidia-cuda-runtime-cu12==12.8.90",
+  "nvidia-cuda-nvrtc-cu12==12.8.93",
+  "nvidia-cufft-cu12==11.3.3.83",
+  "nvidia-curand-cu12==10.3.9.90",
+  "nvidia-cudnn-cu12==9.19.0.56",
+  "tokenizers>=0.21,<1",
+]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]

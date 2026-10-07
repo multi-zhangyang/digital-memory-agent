@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { Asset, ImageView, VideoFrame, VideoInfo, VideoSourceIndex } from "@memory/contracts";
-import type { ImageFeatures } from "../integrations/local-features.js";
+import type { ImageFeatures } from "../integrations/feature-provider.js";
 import { UserFacingError } from "../errors.js";
 
 export interface IndexedVideoFrame {

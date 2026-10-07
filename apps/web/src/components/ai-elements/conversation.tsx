@@ -4,7 +4,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, SyntheticEvent } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
@@ -26,13 +26,40 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  onPointerDownCapture,
+  onClickCapture,
+  onKeyDownCapture,
   ...props
-}: ConversationContentProps) => (
-  <StickToBottom.Content
-    className={cn("flex flex-col gap-8 p-4", className)}
-    {...props}
-  />
-);
+}: ConversationContentProps) => {
+  const { stopScroll } = useStickToBottomContext();
+  const pauseForDisclosure = (event: SyntheticEvent<HTMLDivElement>) => {
+    // Reading details is a user scroll escape, not new streamed output.
+    if ((event.target as Element).closest('[data-slot="collapsible-trigger"], [role="tab"]')) {
+      stopScroll();
+    }
+  };
+
+  return (
+    <StickToBottom.Content
+      className={cn("flex flex-col gap-8 p-4", className)}
+      {...props}
+      onPointerDownCapture={(event) => {
+        pauseForDisclosure(event); // Tabs activate on pointer down, before click.
+        onPointerDownCapture?.(event);
+      }}
+      onClickCapture={(event) => {
+        pauseForDisclosure(event); // Also handles keyboard and assistive clicks.
+        onClickCapture?.(event);
+      }}
+      onKeyDownCapture={(event) => {
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+          pauseForDisclosure(event);
+        }
+        onKeyDownCapture?.(event);
+      }}
+    />
+  );
+};
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;
@@ -89,6 +116,7 @@ export const ConversationScrollButton = ({
           className
         )}
         onClick={handleScrollToBottom}
+        aria-label="回到底部"
         size="icon"
         type="button"
         variant="outline"

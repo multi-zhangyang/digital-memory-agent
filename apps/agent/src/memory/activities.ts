@@ -26,6 +26,16 @@ export class MemoryActivities {
       CREATE TABLE IF NOT EXISTS memory_activity_members(activityId TEXT NOT NULL,memoryId TEXT NOT NULL,PRIMARY KEY(activityId,memoryId));
       CREATE INDEX IF NOT EXISTS activity_memory ON memory_activity_members(memoryId,activityId);
       CREATE INDEX IF NOT EXISTS activity_date ON memory_activities(json_extract(data,'$.occurredAt') DESC,json_extract(data,'$.updatedAt') DESC);`);
+    data.events.subscribe("memory.activity-content", ["memory.changed"], (event) => {
+      const memory = data.memories.get<MemoryEntry>("memory", event.aggregateId);
+      if (!memory?.derivedFrom?.length || memory.status !== "confirmed" || memory.editedBy !== "user") return;
+      for (const activity of this.related([memory.id])) {
+        if (activity.eventMemoryId !== memory.id) continue;
+        const values = { title: memory.title, summary: memory.content, occurredAt: memory.occurredAt, place: memory.place || "" };
+        if (Object.entries(values).some(([key, value]) => activity[key as keyof typeof values] !== value))
+          this.save({ ...this.raw(activity.id), ...values, version: activity.version + 1, reason: memory.reason || activity.reason }, activity.version);
+      }
+    });
   }
   raw(id: string): MemoryActivity {
     const row = this.data.db.prepare("SELECT data FROM memory_activities WHERE id=?").get(id) as { data: string } | undefined;
@@ -71,9 +81,10 @@ export class MemoryActivities {
   related(memoryIds: string[], dates: string[] = [], allowedAssetIds?: readonly string[]) {
     const rows = this.data.db.prepare(`SELECT a.id FROM memory_activities a WHERE json_extract(a.data,'$.status') NOT IN ('rejected','superseded') AND
       (EXISTS(SELECT 1 FROM memory_activity_members m WHERE m.activityId=a.id AND m.memoryId IN (SELECT value FROM json_each(?))) OR
-      json_extract(a.data,'$.occurredAt') IN (SELECT value FROM json_each(?))) ORDER BY
+      json_extract(a.data,'$.occurredAt') IN (SELECT value FROM json_each(?)) OR
+      json_extract(a.data,'$.eventMemoryId') IN (SELECT value FROM json_each(?))) ORDER BY
       (SELECT count(*) FROM memory_activity_members m WHERE m.activityId=a.id AND m.memoryId IN (SELECT value FROM json_each(?))) DESC,
-      json_extract(a.data,'$.updatedAt') DESC LIMIT 60`).all(JSON.stringify(memoryIds), JSON.stringify(dates.filter(Boolean)), JSON.stringify(memoryIds)) as { id: string }[];
+      json_extract(a.data,'$.updatedAt') DESC LIMIT 60`).all(JSON.stringify(memoryIds), JSON.stringify(dates.filter(Boolean)), JSON.stringify(memoryIds), JSON.stringify(memoryIds)) as { id: string }[];
     return rows.flatMap(({ id }) => { const raw = this.raw(id);
       return allowedAssetIds && raw.sources.some((s) => s.type !== "asset" || !allowedAssetIds.includes(s.assetId)) ? [] : [this.get(id, allowedAssetIds)]; });
   }
@@ -121,6 +132,33 @@ export class MemoryActivities {
   candidate(values: Pick<MemoryActivity, "title" | "summary" | "occurredAt" | "place" | "issues" | "reason">, memories: MemoryEntry[], modelId?: string): MemoryActivity {
     return { ...values, id: randomUUID(), version: 1, status: "candidate", members: memories.map(ref), sources: combineEvidence(memories.flatMap(evidenceOf)),
       entityIds: this.entities(memories), locked: false, modelId, createdAt: now(), updatedAt: now() };
+  }
+  appendTarget(id: string, allowedAssetIds?: readonly string[]) {
+    const activity = this.get(id, allowedAssetIds);
+    if (["rejected", "superseded"].includes(activity.status)) throw new UserFacingError(409, "ACTIVITY_UNAVAILABLE", "活动已停用，请选择当前活动");
+    if (activity.stale) throw new UserFacingError(409, "ACTIVITY_STALE", "活动依据已改变，请先核对活动内容");
+    return activity;
+  }
+  append(id: string, memories: MemoryEntry[], allowedAssetIds?: readonly string[]) {
+    return this.data.memories.transaction(() => {
+      const current = this.appendTarget(id, allowedAssetIds);
+      const added = memories.filter((m) => !current.members.some((member) => member.id === m.id));
+      if (!added.length) return current;
+      if (added.some((m) => !this.available(m, allowedAssetIds) || this.data.memories.get<MemoryEntry>("memory", m.id)?.version !== m.version))
+        throw new UserFacingError(409, "SOURCE_CHANGED", "新增资料已更新，请重新整理");
+      const members = [...current.members, ...added.map(ref)], ids = members.map((m) => m.id);
+      if (members.length > 48) throw new UserFacingError(400, "ACTIVITY_LIMIT", "单个活动最多包含 48 条记录，请按具体活动分别整理");
+      if (this.separations(ids).length) throw new UserFacingError(409, "ACTIVITY_SEPARATED", "这些资料此前已明确拆分，请先调整活动归组");
+      const overlaps = this.related(added.map((m) => m.id));
+      if (overlaps.some((a) => a.id !== id && a.locked)) throw new UserFacingError(409, "ACTIVITY_OVERLAP", "新增资料已属于其他手动核对的活动，请先核对合并或拆分");
+      // Attaching sources does not rewrite the confirmed text or reconfirm observations.
+      const result = this.save({ ...current, version: current.version + 1, members,
+        sources: combineEvidence([...current.sources, ...added.flatMap(evidenceOf)]),
+        entityIds: [...new Set([...current.entityIds, ...this.entities(added)])] }, current.version);
+      for (const previous of overlaps) if (previous.id !== id && !previous.locked && previous.members.every((m) => ids.includes(m.id)))
+        this.save({ ...previous, version: previous.version + 1, status: "superseded", replacedBy: id, replacementIds: [id] }, previous.version);
+      return result;
+    });
   }
   separations(memoryIds?: string[]): [string, string][] {
     const rows = memoryIds ? this.data.db.prepare("SELECT leftId,rightId FROM memory_activity_separations WHERE leftId IN (SELECT value FROM json_each(?)) AND rightId IN (SELECT value FROM json_each(?))").all(JSON.stringify(memoryIds), JSON.stringify(memoryIds)) :

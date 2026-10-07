@@ -26,7 +26,7 @@ export function MemoryDatasetsButton({ memoryIds, models, onOpen }: { memoryIds:
     {open && <DatasetList memoryIds={memoryIds} models={models} onClose={() => setOpen(false)} onOpen={(id) => { setOpen(false); onOpen(id); }} />}</>;
 }
 export function MemoryDatasetsPage({ models, onOpen }: { models: ModelInfo[]; onOpen: (id: string) => void }) {
-  return <div className="min-h-0 flex-1 overflow-y-auto px-6 py-10 sm:px-10"><div className="mx-auto max-w-5xl"><DatasetList memoryIds={[]} models={models} onOpen={onOpen} page /></div></div>;
+  return <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-8"><div className="mx-auto max-w-6xl"><DatasetList memoryIds={[]} models={models} onOpen={onOpen} page /></div></div>;
 }
 function DatasetList({ memoryIds, models, onClose, onOpen, page = false }: { memoryIds: string[]; models: ModelInfo[]; onClose?: () => void; onOpen: (id: string) => void; page?: boolean }) {
   const [datasets, setDatasets] = useState<MemoryDataset[]>(), [revision, setRevision] = useState(0);

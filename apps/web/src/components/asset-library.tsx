@@ -154,7 +154,7 @@ export function AssetLibrary({
   return (
     <div
       className={cn(
-        "min-h-0 flex-1 overflow-y-auto px-5 py-10 sm:px-10 lg:px-12",
+        "min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-8",
         dragging && "bg-muted",
       )}
       onDragOver={(event) => {
@@ -171,8 +171,8 @@ export function AssetLibrary({
         void upload(event.dataTransfer.files);
       }}
     >
-      <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="flex items-center gap-3 text-2xl font-medium tracking-tight">
             {title}
             <Badge variant="secondary">{assets.length}</Badge>

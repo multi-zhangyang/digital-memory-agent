@@ -30,9 +30,10 @@ import type {
   ToolInfo,
 } from "@memory/contracts";
 import { LoaderCircle, Plug, Plus, Settings2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { HarnessSettingsPanel } from "./harness-settings";
 import { MemorySettingsPanel } from "./memory-settings";
+import { FeatureModelSettings } from "./feature-model-settings";
 
 export function SettingsPanel({
   configuration,
@@ -74,17 +75,17 @@ export function SettingsPanel({
   }
   return (
     <div
-      className="min-h-0 flex-1 overflow-y-auto px-5 py-10 sm:px-10 lg:px-12"
+      className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-8"
       data-testid="settings-page"
     >
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <h1 className="text-2xl font-medium tracking-tight">设置</h1>
         <Tabs
           defaultValue="models"
           orientation="vertical"
           className="mt-9 flex-col gap-8 md:flex-row md:gap-12"
         >
-          <TabsList className="w-full shrink-0 items-stretch gap-1 bg-transparent p-0 md:sticky md:top-0 md:w-40">
+          <TabsList variant="line" className="w-full shrink-0 items-stretch gap-1 p-0 md:sticky md:top-0 md:w-40">
             <TabsTrigger
               value="models"
               className="h-9 flex-none justify-start px-3 text-sm font-normal"
@@ -149,6 +150,7 @@ export function SettingsPanel({
                 </AccordionItem>
               ))}
             </Accordion>
+            <FeatureModelSettings />
           </TabsContent>
           <TabsContent value="harness" className="min-w-0">
             {project && (
@@ -192,10 +194,12 @@ function ProviderForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
+  const [savedProvider, setSavedProvider] = useState(provider);
+  if (savedProvider !== provider) {
+    setSavedProvider(provider);
     setForm(values(provider));
     setApiKey("");
-  }, [provider]);
+  }
   const update = <K extends keyof ConnectionUpdate>(
     name: K,
     value: ConnectionUpdate[K],
@@ -285,7 +289,6 @@ function ProviderForm({
               <Accordion
                 type="single"
                 collapsible
-                defaultValue={provider.configured ? "parameters" : undefined}
               >
                 <AccordionItem value="parameters">
                   <AccordionTrigger>模型参数</AccordionTrigger>

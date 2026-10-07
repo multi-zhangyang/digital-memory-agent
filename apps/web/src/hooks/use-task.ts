@@ -156,6 +156,7 @@ export function useTask(id: string | null, onChanged: () => void) {
       if (
         event.type === "text" ||
         event.type === "reasoning" ||
+        event.type === "tool-input" ||
         event.type === "tool-update"
       ) {
         timer ??= setTimeout(flush, 50);

@@ -2,6 +2,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Collapsible,
   CollapsibleContent,
@@ -22,6 +23,7 @@ import { isValidElement } from "react";
 import dynamic from "next/dynamic";
 const CodeBlock = dynamic(() =>
   import("./code-block").then((m) => m.CodeBlock),
+  { loading: () => <Skeleton className="h-8 w-full" /> },
 );
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
@@ -56,7 +58,7 @@ const getStatusBadge = (status: ToolUIPart["state"]) => {
 
   const icons: Record<ToolUIPart["state"], ReactNode> = {
     "input-streaming": <CircleIcon className="size-4" />,
-    "input-available": <ClockIcon className="size-4 animate-pulse" />,
+    "input-available": <ClockIcon className="size-4 motion-safe:animate-pulse" />,
     "approval-requested": <ClockIcon className="size-4" />,
     "approval-responded": <CheckCircleIcon className="size-4" />,
     "output-available": <CheckCircleIcon className="size-4" />,
@@ -105,7 +107,7 @@ export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
 export const ToolContent = ({ className, ...props }: ToolContentProps) => (
   <CollapsibleContent
     className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+      "overflow-hidden text-popover-foreground outline-none motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down",
       className,
     )}
     {...props}

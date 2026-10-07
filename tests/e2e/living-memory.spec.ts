@@ -11,7 +11,7 @@ test("organizes activities in conversation, persists corrections and keeps revie
   expect((await request.patch("/api/memory-settings", { data: { intake: "manual", capture: "off", textModelId: "openai-compatible/living-browser-test", photoModelId: "openai-compatible/living-browser-test" } })).ok()).toBeTruthy();
   try {
     await page.setViewportSize({ width: 1440, height: 960 }); await page.goto("/");
-    await expect(page.getByRole("heading", { name: "新对话", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想记住什么？", exact: true })).toBeVisible();
     await page.screenshot({ path: "test-results/living-memory-home-1440.png", animations: "disabled" });
     const tag = randomUUID().slice(0, 8);
     const composer = page.getByTestId("workbench-composer").last();
@@ -55,13 +55,14 @@ test("organizes activities in conversation, persists corrections and keeps revie
     })).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: "test-results/living-memory-review-390.png", animations: "disabled" });
-    await detail.getByRole("button", { name: "关闭活动详情" }).click();
+    await detail.getByRole("button", { name: "补充资料", exact: true }).click();
     await expect(detail).toHaveCount(0);
+    await expect(page.getByLabel("任务指令")).toHaveValue(new RegExp(id));
     await page.screenshot({ path: "test-results/living-memory-chat-390.png", animations: "disabled" });
     await page.setViewportSize({ width: 1440, height: 960 });
     await page.getByRole("button", { name: "记忆", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "活动", exact: true })).toHaveAttribute("data-state", "active");
-    const card = page.locator(`[data-activity-id="${id}"]`);
+    await expect(page.getByRole("tab", { name: "生活活动", exact: true })).toHaveAttribute("data-state", "active");
+    const card = page.locator(`[data-workbench-page="memory"] [data-activity-id="${id}"]`);
     await expect(card).toContainText("杉溪公园野餐");
     await card.getByRole("button", { name: "查看活动", exact: true }).click();
     await detail.getByRole("checkbox", { name: /^拆分记录 / }).first().check();

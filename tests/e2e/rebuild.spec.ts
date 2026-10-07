@@ -121,10 +121,12 @@ test("native model selector, reasoning and clipboard attachment reach the actual
   await expect(
     page.getByRole("button", { name: "选择对话模型", exact: true }),
   ).toContainText("ui-fast");
+  await page.getByRole("button", { name: "任务设置", exact: true }).click();
   await page.getByRole("combobox", { name: "思考强度", exact: true }).click();
   await page.getByRole("option", { name: "max", exact: true }).click();
   await page.getByRole("combobox", { name: "本次权限", exact: true }).click();
   await page.getByRole("option", { name: "只读", exact: true }).click();
+  await page.getByRole("dialog", { name: "任务设置" }).getByRole("button", { name: "Close", exact: true }).click();
   await page.getByLabel("任务指令", { exact: true }).evaluate((input) => {
     const transfer = new DataTransfer();
     transfer.items.add(

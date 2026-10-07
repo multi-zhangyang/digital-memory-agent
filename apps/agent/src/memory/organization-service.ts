@@ -10,7 +10,7 @@ import { EvidenceService } from "./evidence-service.js";
 import { processingModel } from "./processing-policy.js";
 import { evidenceOf } from "./values.js";
 import { memoryTokens } from "./retrieval.js";
-import { activityDate, unlinkedVisualPairs, validateActivities, type ActivityExtractionInput } from "./activity-extraction.js";
+import { activityDate, unlinkedVisualPairs, validateActivities, type ActivityExtractionInput, type ActivityTaskContext } from "./activity-extraction.js";
 import { MemorySourceVerifier } from "./source-verifier.js";
 import { UserFacingError } from "../errors.js";
 
@@ -21,6 +21,7 @@ interface OrganizationJob {
   recoveries: number; error?: string;
   validationRetries?: number;
   maintenance?: boolean; sourceVersions?: [string, string][];
+  context?: ActivityTaskContext; targetActivityId?: string;
 }
 type OrganizationScope = { requestId: string; modelId?: string; allowedAssetIds?: readonly string[]; ownership?: "task" | "library"; processed?: boolean; maintenance?: boolean };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -110,11 +111,12 @@ export class MemoryOrganizationService {
       await this.submit({ assetIds }, { requestId: `maintenance:${hash(versions)}`, modelId, ownership: "library", processed: true, maintenance: true });
     }
   }
-  async submit(input: { assetIds: string[]; title?: string }, scope: OrganizationScope) {
+  async submit(input: { assetIds: string[]; title?: string; context?: ActivityTaskContext; targetActivityId?: string }, scope: OrganizationScope) {
     const existing = this.data.db.prepare("SELECT data FROM memory_organization_jobs WHERE requestId=?").get(scope.requestId) as { data: string } | undefined;
     if (existing) {
       const job = JSON.parse(existing.data) as OrganizationJob;
-      if (hash([...new Set(input.assetIds)].sort()) !== hash([...job.assetIds].sort()) || (scope.allowedAssetIds && job.allowedAssetIds.some((id) => !scope.allowedAssetIds!.includes(id))))
+      if (hash([...new Set(input.assetIds)].sort()) !== hash([...job.assetIds].sort()) || input.targetActivityId !== job.targetActivityId ||
+        hash([input.context?.messages, input.context?.timeZone]) !== hash([job.context?.messages, job.context?.timeZone]) || (scope.allowedAssetIds && job.allowedAssetIds.some((id) => !scope.allowedAssetIds!.includes(id))))
         throw new UserFacingError(409, "COMMAND_CONFLICT", "此整理请求已用于不同资料范围");
       return job;
     }
@@ -126,20 +128,23 @@ export class MemoryOrganizationService {
       if (!asset || (asset.memorySpace || "personal") !== "personal" || !["text", "image", "video"].includes(asset.kind) || this.data.memories.ledger.sourceBlocked(asset.sha256))
         throw new UserFacingError(409, "SOURCE_UNAVAILABLE", "资料不可用或已停止取用");
     }
-    const modelId = processingModel(this.config, this.data.memories.ledger.settings(), "text", scope.modelId).model.id;
-    if (!this.processors().organizeActivities) throw new UserFacingError(503, "PROCESSOR_UNAVAILABLE", "活动整理模型能力未配置");
+    const target = input.targetActivityId ? this.activities.appendTarget(input.targetActivityId, scope.allowedAssetIds) : undefined;
+    const modelId = target ? scope.modelId || "" : processingModel(this.config, this.data.memories.ledger.settings(), "text", scope.modelId).model.id;
+    if (!target && !this.processors().organizeActivities) throw new UserFacingError(503, "PROCESSOR_UNAVAILABLE", "活动整理模型能力未配置");
     const ownership = scope.ownership || "task";
     // Only library-owned work authorizes future background maintenance.
     if (ownership === "library") for (const id of ids) this.data.db.prepare("INSERT INTO memory_organization_sources VALUES(?,?) ON CONFLICT(assetId) DO UPDATE SET sha256=excluded.sha256").run(id, this.data.asset(id)!.sha256);
     const maintained = (this.data.db.prepare("SELECT s.assetId FROM memory_organization_sources s JOIN assets a ON a.id=s.assetId AND a.sha256=s.sha256").all() as { assetId: string }[]).map((s) => s.assetId);
-    const allowedAssetIds = scope.allowedAssetIds ? [...scope.allowedAssetIds] : [...new Set([...ids, ...maintained])];
+    const allowedAssetIds = scope.allowedAssetIds ? [...scope.allowedAssetIds] : [...new Set([...ids, ...maintained,
+      ...(target?.sources.flatMap((s) => s.type === "asset" ? [s.assetId] : []) || [])])];
     const missing = scope.processed ? [] : ids.filter((id) => !this.observations([id], allowedAssetIds).length);
     const upstream = missing.length ? await this.processing.submit({ assetIds: missing }, { requestId: `organize:${scope.requestId}`, modelId: scope.modelId, allowedAssetIds, ownership }) : undefined;
     // Processing preparation can yield; enforce request idempotency again before insertion.
     const duplicate = this.data.db.prepare("SELECT data FROM memory_organization_jobs WHERE requestId=?").get(scope.requestId) as { data: string } | undefined;
     if (duplicate) return JSON.parse(duplicate.data) as OrganizationJob;
     const job: OrganizationJob = { id: randomUUID(), requestId: scope.requestId, title: input.title || "整理生活活动", status: "queued", revision: 0, updatedAt: now(),
-      modelId, assetIds: ids, allowedAssetIds, ownership, maintenance: scope.maintenance, processingJobId: upstream?.id, cursor: 0, activityIds: [], failures: [], recoveries: 0 };
+      modelId, assetIds: ids, allowedAssetIds, ownership, context: input.context, targetActivityId: target?.id,
+      maintenance: scope.maintenance, processingJobId: upstream?.id, cursor: 0, activityIds: [], failures: [], recoveries: 0 };
     this.data.db.prepare("INSERT INTO memory_organization_jobs VALUES(?,?,?)").run(job.id, job.requestId, JSON.stringify(job));
     this.save(job); this.wake(); return this.job(job.id);
   }
@@ -169,7 +174,9 @@ export class MemoryOrganizationService {
       uncertainty: m.uncertainty || "", entityIds: this.activities.entities([m]) })), requiredRefs: seeds.map((m) => names.get(m.id)!),
       existing: ranked.map((a) => ({ id: a.id, title: a.title, members: a.members.flatMap((m) => names.has(m.id) ? [names.get(m.id)!] : []), locked: a.locked })),
       separated: this.activities.separations(observations.map((m) => m.id)).map(([a, b]) => [names.get(a)!, names.get(b)!]) };
-    input.separated.push(...unlinkedVisualPairs(input.observations));
+    if (job.context?.messages.some((m) => m.text.trim())) input.context = { ...job.context,
+      observationRefs: observations.filter((m) => m.sources.every((s) => job.assetIds.includes(s.assetId))).map((m) => names.get(m.id)!) };
+    input.separated.push(...unlinkedVisualPairs(input.observations, input.context?.observationRefs));
     return { input, observations, ranked };
   }
   wake() {
@@ -195,6 +202,16 @@ export class MemoryOrganizationService {
           const seeds = ids.flatMap((id) => { const memory = this.data.memories.get<MemoryEntry>("memory", id); return memory && this.activities.available(memory, job!.allowedAssetIds) ? [memory] : []; });
           try {
             if (!seeds.length) throw new UserFacingError(409, "SOURCE_CHANGED", "本批活动依据已停用或更新");
+            if (job.targetActivityId) {
+              const verifier = new MemorySourceVerifier(this.data);
+              for (const memory of seeds) await verifier.verify(memory, signal);
+              signal.throwIfAborted();
+              this.data.memories.transaction(() => {
+                const activity = this.activities.append(job!.targetActivityId!, seeds, job!.allowedAssetIds);
+                job = this.save({ ...job!, cursor: job!.cursor + ids.length, activityIds: [activity.id] });
+              });
+              continue;
+            }
             const { input, observations, ranked } = await this.input(job, seeds, signal);
             const verifier = new MemorySourceVerifier(this.data);
             for (const memory of observations) await verifier.verify(memory, signal);

@@ -52,6 +52,40 @@ async function task(scenario: string, text: string, assets: Asset[] = [], conver
     tools: run.parts.filter((p) => p.type === "tool").map((p) => ({ name: p.name, state: p.state })) })); await save(); return run;
 }
 const activities = async () => (await app.inject("/api/memory-activities?limit=50")).json<{ activities: MemoryActivity[] }>().activities;
+async function dailyFlow(bytes: Buffer) {
+  const photo = await asset(bytes, "咖啡照片.jpg", "image");
+  const note = await asset(Buffer.from("沈青和顾宁一起喝咖啡，顾宁把银色保温杯放入灰色背包主袋。"), "随手记录.txt", "text");
+  const organized = await task("daily-01-organize", "这些照片和随手记录来自上周日在青禾咖啡馆的同一次喝咖啡。请整理为活动，日期地点按我的说明，照片内容保持观察性质。", [photo, note]);
+  let page = await activities();
+  let activity = page.find((a) => [photo, note].every((asset) => a.sources.some((s) => s.type === "asset" && s.assetId === asset.id)));
+  const reference = new Date(new Intl.DateTimeFormat("en-CA", { timeZone: store.memories.ledger.settings().timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(organized.createdAt)) + "T00:00:00Z");
+  reference.setUTCDate(reference.getUTCDate() - (reference.getUTCDay() || 7));
+  checks.contextOrganization = organized.status === "completed" && !!activity && activity.occurredAt === reference.toISOString().slice(0, 10) && activity.place === "青禾咖啡馆";
+  report.organizedActivities = page;
+  if (!activity) throw new Error("未形成对应活动");
+  const activityId = activity.id;
+  await task("daily-01-confirm", `我确认活动「${activity.title}」（${activityId}）当前展示的活动内容属实，请确认这个活动。`);
+  activity = (await activities()).find((a) => a.id === activityId)!;
+  const summary = activity.summary;
+  checks.confirmed = activity.status === "confirmed";
+  const supplement = await asset(Buffer.from("同一次喝咖啡的补充：顾宁把备用纸巾放在灰色背包侧袋，沈青带走了蓝色笔记本。"), "咖啡补充.txt", "text");
+  const appended = await task("daily-02-append", `把这份新记录补进上次的咖啡活动（${activityId}），保留原活动内容。`, [supplement]);
+  activity = (await activities()).find((a) => a.id === activityId)!;
+  checks.appendSameActivity = appended.status === "completed" && activity.summary === summary && activity.status === "confirmed" && activity.sources.some((s) => s.type === "asset" && s.assetId === supplement.id);
+  checks.noDuplicateActivities = (await activities()).filter((a) => a.sources.some((s) => s.type === "asset" && s.assetId === supplement.id)).length === 1;
+  const recall = await task("daily-03-recall", "上次沈青和顾宁在哪里喝咖啡？补充记录里备用纸巾放在哪里？也把那次的照片找给我。");
+  checks.recallSources = recall.status === "completed" && /青禾咖啡馆/.test(responseText(recall)) && /侧袋/.test(responseText(recall)) && recall.sources.some((s) => s.assetId === photo.id);
+  const compacted = await app.inject({ method: "POST", url: `/api/conversations/${recall.conversationId}/compact`, payload: { instructions: "保留咖啡活动引用、用户目标和查询结果。" } });
+  const session = (await app.inject(`/api/conversations/${recall.conversationId}/session`)).json();
+  checks.piCompaction = compacted.statusCode === 200 && session.nodes.some((node: { kind?: string }) => node.kind === "compaction");
+  const corrected = await task("daily-04-correct", "上次喝咖啡的地点写错了，改成杉溪咖啡馆。", [], recall.conversationId);
+  activity = (await activities()).find((a) => a.id === activityId)!;
+  checks.corrected = corrected.status === "completed" && activity.place === "杉溪咖啡馆" && activity.summary.includes("杉溪咖啡馆") && !activity.summary.includes("青禾咖啡馆") && !activity.title.includes("青禾咖啡馆");
+  const updated = await task("daily-04-recall-again", "沈青和顾宁上次在哪里喝咖啡？请按当前记忆回答。");
+  checks.correctedRecall = updated.status === "completed" && /杉溪咖啡馆/.test(responseText(updated)) && !/青禾咖啡馆/.test(responseText(updated));
+  checks.observationsUnconfirmed = store.memories.list<MemoryEntry>("memory").filter((m) => !m.derivedFrom).every((m) => m.status === "draft");
+  report.finalActivities = await activities();
+}
 try {
   await app.ready();
   const manifest = JSON.parse(await readFile(join(projectRoot, "examples/photos/manifest.json"), "utf8"));
@@ -59,6 +93,8 @@ try {
   const bytes = await readFile(join(projectRoot, ".data/photo-fixtures", photoSource.file));
   if (createHash("sha256").update(bytes).digest("hex") !== photoSource.sha256) throw new Error("公开照片校验失败");
   report.photo = photoSource;
+  if (process.argv.includes("--daily")) await dailyFlow(bytes);
+  else {
   const photo = await asset(bytes, "资料照片.jpg", "image");
   const first = await asset(Buffer.from("2026年9月20日，沈青和顾宁在青禾公园野餐。沈青带了蓝色野餐垫，顾宁带了三明治。两人把空餐盒收进灰色背包，备用纸巾放在背包侧袋。"), "野餐记录.txt", "text");
   const meal = await asset(Buffer.from("2026年9月21日中午，沈青和顾宁在禾里小馆吃午饭，点了菌菇面。"), "午饭记录.txt", "text");
@@ -123,7 +159,9 @@ try {
       checks.downloadHashes = files.every((file) => file.status === 200 && file.hashMatches);
     }
   }
-  report.finalActivities = await activities(); report.completed = true;
+  report.finalActivities = await activities();
+  }
+  report.completed = true;
 } catch { report.failure = "真实验证未完成，请查看已保存的阶段与工具状态"; }
 finally { await save(); await app.close(); }
 console.log(JSON.stringify({ report: join(directory, "report.json"), model: provider.model.name, checks, completed: report.completed }));
